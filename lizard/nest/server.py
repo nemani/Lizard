@@ -19,7 +19,7 @@ from lizard.common.models import (
     HostStatus,
     MetricsEnvelope,
 )
-from lizard.common.mqtt import MqttSettings, build_client
+from lizard.common.mqtt import MqttSettings, build_client, publish_text
 from lizard.nest.config import NestSettings
 from lizard.nest.config_store import ConfigStore
 from lizard.nest.prometheus import render_prometheus_metrics
@@ -136,10 +136,10 @@ def refresh_server_inventory(host_id: str) -> dict[str, str]:
         raise HTTPException(status_code=404, detail="unknown host_id")
 
     topic = f"{settings.mqtt_topic_prefix}/servers/{host_id}/inventory/refresh"
-    result = client.publish(topic, "{}", qos=1)
-    result.wait_for_publish(timeout=10)
-    if result.rc != mqtt.MQTT_ERR_SUCCESS:
-        raise HTTPException(status_code=502, detail=f"failed to publish inventory refresh: rc={result.rc}")
+    try:
+        publish_text(client, topic, "{}", qos=1)
+    except (RuntimeError, TimeoutError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"status": "ok", "host_id": host_id}
 
 
@@ -260,10 +260,10 @@ def _publish_config(scope: str, topic: str, config: AlertConfig) -> ConfigEnvelo
 
     envelope = config_store.next_envelope(scope, config)
     payload = envelope.model_dump_json(exclude_none=True)
-    result = client.publish(topic, payload, qos=1, retain=True)
-    result.wait_for_publish(timeout=10)
-    if result.rc != mqtt.MQTT_ERR_SUCCESS:
-        raise HTTPException(status_code=502, detail=f"failed to publish MQTT config: rc={result.rc}")
+    try:
+        publish_text(client, topic, payload, qos=1, retain=True)
+    except (RuntimeError, TimeoutError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     LOGGER.info("published retained config scope=%s version=%s topic=%s", scope, envelope.version, topic)
     return envelope
 

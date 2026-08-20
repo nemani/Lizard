@@ -13,7 +13,7 @@ import paho.mqtt.client as mqtt
 from pydantic import ValidationError
 
 from lizard.common.models import ConfigAck, ConfigEnvelope
-from lizard.common.mqtt import MqttSettings, build_client, publish_json
+from lizard.common.mqtt import MqttSettings, build_client, publish_json, publish_text
 from lizard.egg.collector import collect_metrics
 from lizard.egg.config import EggSettings
 from lizard.egg.inventory import collect_inventory
@@ -177,27 +177,26 @@ def _build_on_connect(settings: EggSettings):
 def _build_on_message(state: RuntimeState, settings: EggSettings):
     def on_message(mqtt_client: mqtt.Client, _userdata: object, message: mqtt.MQTTMessage) -> None:
         if message.topic.endswith("/inventory/refresh"):
-            _publish_inventory(mqtt_client, settings)
+            _publish_inventory(mqtt_client, settings, wait=False)
             return
 
         ack = state.apply_remote_config(message.topic, message.payload)
         topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/config/status"
         payload = ack.model_dump_json()
-        mqtt_client.publish(topic, payload, qos=1, retain=True)
-        _publish_inventory(mqtt_client, state.get_settings())
+        publish_text(mqtt_client, topic, payload, qos=1, retain=True, wait=False)
+        _publish_inventory(mqtt_client, state.get_settings(), wait=False)
 
     return on_message
 
 
-def _publish_inventory(mqtt_client: mqtt.Client, settings: EggSettings) -> None:
+def _publish_inventory(mqtt_client: mqtt.Client, settings: EggSettings, wait: bool = True) -> None:
     inventory = collect_inventory(settings)
     topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/inventory"
-    result = mqtt_client.publish(topic, inventory.model_dump_json(), qos=1, retain=True)
-    result.wait_for_publish(timeout=10)
-    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+    try:
+        publish_text(mqtt_client, topic, inventory.model_dump_json(), qos=1, retain=True, wait=wait)
         LOGGER.info("published inventory to %s", topic)
-    else:
-        LOGGER.warning("failed to publish inventory to %s rc=%s", topic, result.rc)
+    except (RuntimeError, TimeoutError) as exc:
+        LOGGER.warning("failed to publish inventory to %s: %s", topic, exc)
 
 
 if __name__ == "__main__":

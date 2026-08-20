@@ -35,7 +35,29 @@ def build_client(client_id: str, settings: MqttSettings) -> mqtt.Client:
 
 def publish_json(client: mqtt.Client, topic: str, payload: dict, qos: int = 1) -> None:
     encoded = json.dumps(payload, separators=(",", ":"), default=str)
-    result = client.publish(topic, encoded, qos=qos)
-    result.wait_for_publish(timeout=10)
+    publish_text(client, topic, encoded, qos=qos)
+
+
+def publish_text(
+    client: mqtt.Client,
+    topic: str,
+    payload: str,
+    qos: int = 1,
+    retain: bool = False,
+    wait: bool = True,
+) -> None:
+    result = client.publish(topic, payload, qos=qos, retain=retain)
+    if wait:
+        wait_for_publish_success(result, topic)
+
+
+def wait_for_publish_success(
+    result: mqtt.MQTTMessageInfo,
+    topic: str,
+    timeout: float = 10,
+) -> None:
     if result.rc != mqtt.MQTT_ERR_SUCCESS:
         raise RuntimeError(f"failed to publish MQTT message to {topic}: rc={result.rc}")
+    result.wait_for_publish(timeout=timeout)
+    if not result.is_published():
+        raise TimeoutError(f"timed out publishing MQTT message to {topic}")
