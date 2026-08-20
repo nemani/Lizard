@@ -19,12 +19,15 @@ Prometheus scrapes Nest's `/metrics` endpoint for long-term metric querying and 
 
 Disk metrics are device-oriented: the egg deduplicates mounted filesystems by backing `device` and samples usage from the first accessible mountpoint for that device. This keeps host reporting stable for normal Linux installs, while acknowledging that container overlay/bind mounts can present a different view.
 
+The egg is installed as a systemd service on each Linux host because it is part of the server's monitoring plane. systemd gives boot-time startup, crash restart, journald logs, consistent environment injection, and familiar operational controls without requiring an interactive shell. It also fits host-level metric collection: CPU, memory, disks, temperatures, and GPUs are sampled from the host namespace, where operators already manage NVIDIA drivers, kernel updates, and service health. Docker remains useful for Nest and local test eggs, but a production host agent benefits from being supervised directly by the init system that owns the machine lifecycle.
+
 ## Tradeoffs
 
 - MQTT push works well for edge networks and config fan-out, but broker security and operations become important.
 - Local alerting gives autonomous device behavior, but central alert lifecycle belongs in Prometheus Alertmanager or an equivalent service.
 - JSONL storage is transparent and easy to demo, but not suitable for long retention or large fleets.
 - The built-in UI is useful for product workflow and config control; Grafana is better for advanced charts.
+- systemd makes the egg operationally native to Ubuntu GPU servers, but it is Linux-specific and needs installer/provisioning work. A containerized egg can be easier to distribute, but it needs privileged mounts/device access to see the real host and can make disk/device accounting less obvious.
 - Mosquitto auth/TLS is intentionally omitted from the prototype. Production should enable per-device credentials, TLS, topic ACLs, and credential rotation so devices can only publish/read their own topics.
 
 ## Scaling

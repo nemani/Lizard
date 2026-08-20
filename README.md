@@ -63,6 +63,8 @@ This lays a 🥚 and creates:
 - `/etc/lizard/egg.env` for runtime configuration.
 - `/etc/systemd/system/lizard-egg.service`.
 
+The 🥚 agent is installed as a systemd service because it is host infrastructure, not an interactive process. On GPU servers we want the agent to start at boot, restart after crashes, run under a predictable environment, and expose standard operational hooks through `systemctl` and `journalctl`. systemd also keeps the host install simple: the agent can read Linux host metrics directly, use local environment files for secrets and broker settings, and be managed by the same tooling operators already use for long-running server daemons.
+
 Useful operations:
 
 ```bash
@@ -195,6 +197,8 @@ curl -X POST http://localhost:8000/servers/<host_id>/inventory/refresh
 6. Roll out threshold and interval changes with retained MQTT config messages. Roll out broker/credential changes by editing `/etc/lizard/egg.env` and restarting `lizard-egg`.
 
 For fleet automation, wrap `scripts/lay-egg.sh` with Ansible, cloud-init, or your provisioning system. The installer is intentionally environment-variable driven so a single artifact can be reused across servers.
+
+Using systemd for the egg also makes deployment failure modes explicit. If the broker is temporarily unavailable, the service remains supervised and the agent reconnects from a known process lifecycle. If the host reboots after a driver update or kernel patch, telemetry resumes without a human SSH session. In production, the same unit can be extended with hardening directives such as a dedicated service user, tighter filesystem access, restart limits, and environment files provisioned by a secret manager.
 
 ## Scaling
 
