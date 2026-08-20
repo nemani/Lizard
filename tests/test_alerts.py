@@ -6,7 +6,7 @@ from lizard.egg.collector import _evaluate_alerts
 from lizard.egg.config import AlertThreshold, EggSettings
 
 
-def test_cpu_supports_multiple_thresholds_for_same_metric() -> None:
+def test_cpu_emits_highest_crossed_threshold_only() -> None:
     settings = EggSettings(
         mqtt_host="broker",
         cpu_percent_thresholds=[
@@ -24,7 +24,6 @@ def test_cpu_supports_multiple_thresholds_for_same_metric() -> None:
     )
 
     assert [(alert.level, alert.metric, alert.threshold) for alert in alerts] == [
-        ("warning", "cpu.overall_percent", 50),
         ("critical", "cpu.overall_percent", 90),
     ]
 

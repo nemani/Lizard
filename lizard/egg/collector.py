@@ -263,9 +263,10 @@ def _append_threshold_alerts(
     value: float,
     thresholds: list[AlertThreshold],
 ) -> None:
-    for threshold in sorted(thresholds, key=lambda item: item.value):
-        if value > threshold.value:
-            _append_alert(alerts, metric, value, threshold)
+    crossed = [threshold for threshold in thresholds if value > threshold.value]
+    if not crossed:
+        return
+    _append_alert(alerts, metric, value, max(crossed, key=lambda item: item.value))
 
 
 def _append_alert(alerts: list[Alert], metric: str, value: float, threshold: AlertThreshold) -> None:
