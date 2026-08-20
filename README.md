@@ -1,11 +1,11 @@
-# Lizard
+# 🦎 Lizard
 
-Lizard monitors Ubuntu 22.04 Linux servers with GPUs. Each monitored server runs an **egg** agent that samples CPU, RAM, mounted disks, temperatures, and NVIDIA GPU usage, then publishes metrics over MQTT. A central **nest** service subscribes to those messages, stores JSONL history, and exposes the latest status over HTTP.
+🦎 Lizard monitors Ubuntu 22.04 Linux servers with GPUs. Each monitored server runs a **🥚 egg** agent that samples CPU, per-core CPU, RAM, per-disk usage, temperatures, and NVIDIA GPU usage, then publishes metrics over MQTT. A central **nest** service subscribes to those messages, stores JSONL history, exports Prometheus metrics, and exposes the latest status over HTTP.
 
 ## Components
 
-- `lizard-egg`: local monitoring agent for each GPU server.
-- `lizard-nest`: central receiver and HTTP API.
+- `lizard-egg`: 🥚 local monitoring agent for each GPU server.
+- `lizard-nest`: 🦎 central receiver, UI, and HTTP API.
 - `mqtt`: Eclipse Mosquitto broker used for transport.
 - `scripts/lay-egg.sh`: installer that lays an egg by installing `lizard-egg` as a systemd service.
 
@@ -22,10 +22,17 @@ open http://localhost:8000
 curl http://localhost:8000/health
 curl http://localhost:8000/servers
 curl http://localhost:8000/servers/status
+curl http://localhost:8000/servers/inventory
 curl http://localhost:8000/servers/<host_id>
 curl http://localhost:8000/servers/<host_id>/series?limit=240
+curl http://localhost:8000/servers/<host_id>/inventory
 curl http://localhost:8000/metrics
 ```
+
+Grafana includes:
+
+- `Lizard Overview` for fleet-level charts.
+- `Lizard Host Detail` for per-host CPU core, disk, GPU, and heartbeat charts.
 
 ## Run an Egg Locally
 
@@ -50,7 +57,7 @@ Copy this repository or a release archive to the Ubuntu 22.04 GPU server, then r
 sudo MQTT_HOST=<nest-or-broker-host> INTERVAL_SECONDS=15 scripts/lay-egg.sh
 ```
 
-This creates:
+This lays a 🥚 and creates:
 
 - `/opt/lizard/venv` with the Python package installed.
 - `/etc/lizard/egg.env` for runtime configuration.
@@ -93,7 +100,7 @@ If CPU is `95%`, the egg emits both the `warning` and `critical` CPU alerts.
 
 ## Pushing Config Changes
 
-Eggs subscribe to two retained MQTT config topics:
+🥚 Eggs subscribe to two retained MQTT config topics:
 
 - `lizard/config/global`
 - `lizard/servers/<host_id>/config`
@@ -134,7 +141,7 @@ mosquitto_pub -h <broker-host> -r -t lizard/servers/gpu-01/config -m '{
 }'
 ```
 
-Remote updates are applied in memory. On restart, the egg reads local `/etc/lizard/egg.env`, then receives the broker's retained config again. Keep broker connection settings local because changing MQTT host/credentials over the same MQTT connection is intentionally not supported. Eggs publish ack/status to `lizard/servers/<host_id>/config/status`.
+Remote updates are applied in memory. On restart, the 🥚 reads local `/etc/lizard/egg.env`, then receives the broker's retained config again. Keep broker connection settings local because changing MQTT host/credentials over the same MQTT connection is intentionally not supported. Eggs publish ack/status to `lizard/servers/<host_id>/config/status`.
 
 Nest also exposes this as an API and publishes retained MQTT messages for you.
 
@@ -165,7 +172,16 @@ curl -X POST http://localhost:8000/servers/gpu-01/config \
   }'
 ```
 
-The dashboard at `/` uses the same endpoints. It shows latest egg status, heartbeat state, uptime, last seen age, CPU/RAM/GPU/disk time-series charts, latest alerts, and a form for publishing global or per-host local alert config.
+The dashboard at `/` uses the same endpoints. It separates monitoring and config into tabs, shows latest 🥚 status, heartbeat state, uptime, last seen age, CPU/RAM/GPU/disk time-series charts, per-core CPU, per-disk usage, latest alerts, and a form for publishing global or per-host local alert config.
+
+## Host Inventory
+
+🥚 Eggs publish permanent-ish host inventory on startup, after config changes, and when Nest requests a refresh. Inventory includes OS/kernel, architecture, CPU counts, memory size, disks, and GPUs.
+
+```bash
+curl http://localhost:8000/servers/<host_id>/inventory
+curl -X POST http://localhost:8000/servers/<host_id>/inventory/refresh
+```
 
 ## Deployment Strategy
 

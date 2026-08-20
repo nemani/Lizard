@@ -1,19 +1,21 @@
-# Lizard Design
+# 🦎 Lizard Design
 
-Lizard is a push-based edge monitoring prototype for Ubuntu 22.04 NVIDIA GPU devices. Each device runs a lightweight `lizard-egg` agent that samples CPU, RAM, disk, temperature, and GPU metrics, evaluates local alert thresholds, and publishes metrics to MQTT. A central `lizard-nest` service consumes MQTT, exposes a fleet/config UI and API, exports Prometheus metrics, and publishes retained versioned config back to eggs.
+🦎 Lizard is a push-based edge monitoring prototype for Ubuntu 22.04 NVIDIA GPU devices. Each device runs a lightweight `lizard-egg` 🥚 agent that samples CPU, per-core CPU, RAM, per-disk usage, temperature, and GPU metrics, evaluates local alert thresholds, and publishes metrics to MQTT. A central `lizard-nest` service consumes MQTT, exposes a fleet/config UI and API, exports Prometheus metrics, and publishes retained versioned config back to eggs.
 
 ## Architecture
 
 ```text
-Egg agent -> MQTT broker -> Nest API/UI -> Prometheus -> Grafana
+🥚 Egg agent -> MQTT broker -> 🦎 Nest API/UI -> Prometheus -> Grafana
              ^              |
              |              v
              +-- retained config + egg ack/status
 ```
 
-MQTT is used because edge devices are often behind client firewalls/NAT and push telemetry is simpler than scraping each device. Nest owns config versions and publishes retained config envelopes. Eggs subscribe to global and host-specific config topics, apply host config over global config as full-replacement precedence, and publish config ack/status with the active version.
+MQTT is used because edge devices are often behind client firewalls/NAT and push telemetry is simpler than scraping each device. Nest owns config versions and publishes retained config envelopes. 🥚 Eggs subscribe to global and host-specific config topics, apply host config over global config as full-replacement precedence, and publish config ack/status with the active version.
 
-Prometheus scrapes Nest's `/metrics` endpoint for long-term metric querying and Grafana dashboards. Nest still stores JSONL samples for the prototype UI and API; in production this JSONL path would be removed or treated as short-lived local cache.
+Prometheus scrapes Nest's `/metrics` endpoint for long-term metric querying and Grafana dashboards. Grafana includes fleet-level and per-host dashboards. Nest still stores JSONL samples and host inventory for the prototype UI and API; in production this JSONL path would be removed or treated as short-lived local cache.
+
+🥚 Eggs publish host inventory on startup, after config changes, and when Nest requests a refresh. Inventory captures OS/kernel, architecture, CPU counts, memory size, disks, and GPUs without resending it on every metrics sample.
 
 ## Tradeoffs
 
