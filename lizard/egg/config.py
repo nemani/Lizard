@@ -14,7 +14,7 @@ class EggSettings(BaseSettings):
 
     host_id: str = Field(default_factory=socket.gethostname)
     hostname: str = Field(default_factory=socket.gethostname)
-    interval_seconds: int = 15
+    interval_seconds: int = Field(default=15, ge=1)
 
     mqtt_host: str = "localhost"
     mqtt_port: int = 1883

@@ -8,11 +8,11 @@ from pydantic import BaseModel, Field
 
 class AlertThreshold(BaseModel):
     level: str = "warning"
-    value: float
+    value: float = Field(ge=0)
 
 
 class AlertConfig(BaseModel):
-    interval_seconds: int | None = None
+    interval_seconds: int | None = Field(default=None, ge=1)
     cpu_percent_thresholds: list[AlertThreshold] | None = None
     memory_percent_thresholds: list[AlertThreshold] | None = None
     disk_percent_thresholds: list[AlertThreshold] | None = None

@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from lizard.common.models import CpuMetrics, DiskMetrics, GpuMetrics, MemoryMetrics
 from lizard.egg.collector import _evaluate_alerts
 from lizard.egg.config import AlertThreshold, EggSettings
@@ -76,3 +79,11 @@ def test_remote_config_updates_runtime_thresholds() -> None:
         ("warning", 50),
         ("critical", 90),
     ]
+
+
+def test_config_rejects_invalid_interval_and_thresholds() -> None:
+    with pytest.raises(ValidationError):
+        EggSettings(interval_seconds=0)
+
+    with pytest.raises(ValidationError):
+        EggSettings(cpu_percent_thresholds=[{"level": "warning", "value": -1}])
