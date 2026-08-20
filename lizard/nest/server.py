@@ -171,6 +171,23 @@ def set_host_config(host_id: str, config: AlertConfig) -> ConfigEnvelope:
     return _publish_config(f"host:{host_id}", topic, config)
 
 
+@app.delete("/servers/{host_id}/config")
+def delete_host_config(host_id: str) -> dict[str, str | bool]:
+    if client is None:
+        raise HTTPException(status_code=503, detail="MQTT client is not connected")
+    if store.get(host_id) is None:
+        raise HTTPException(status_code=404, detail="unknown host_id")
+
+    topic = f"{settings.mqtt_topic_prefix}/servers/{host_id}/config"
+    try:
+        publish_text(client, topic, "", qos=1, retain=True)
+    except (RuntimeError, TimeoutError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    deleted = config_store.delete(f"host:{host_id}")
+    LOGGER.info("deleted retained config host_id=%s topic=%s existed=%s", host_id, topic, deleted)
+    return {"status": "ok", "host_id": host_id, "deleted": deleted}
+
+
 @app.get("/config/acks")
 def config_acks() -> dict[str, ConfigAck]:
     return config_store.acks()

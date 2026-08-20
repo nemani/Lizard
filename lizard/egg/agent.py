@@ -45,6 +45,9 @@ class RuntimeState:
             return requested
 
     def apply_remote_config(self, topic: str, payload: bytes) -> ConfigAck:
+        if not payload:
+            return self._clear_remote_config(topic)
+
         try:
             decoded = json.loads(payload.decode("utf-8"))
             if not isinstance(decoded, dict):
@@ -83,6 +86,26 @@ class RuntimeState:
             ack.active_scope,
             ack.active_version,
         )
+        return ack
+
+    def _clear_remote_config(self, topic: str) -> ConfigAck:
+        with self._lock:
+            host_topic = f"{self._base_settings.mqtt_topic_prefix}/servers/{self._base_settings.host_id}/config"
+            global_topic = f"{self._base_settings.mqtt_topic_prefix}/config/global"
+            if topic == host_topic:
+                self._host_config = None
+            elif topic == global_topic:
+                self._global_config = None
+            else:
+                return self._config_ack("unknown", 0, "rejected", "config clear topic does not match")
+            active = self._active_config()
+            self._settings = (
+                self._base_settings.with_alert_config(active.config)
+                if active is not None
+                else self._base_settings
+            )
+            ack = self._config_ack(active.scope if active is not None else "local", 0, "applied", "config cleared")
+        LOGGER.info("cleared remote config from %s active=%s:%s", topic, ack.active_scope, ack.active_version)
         return ack
 
     def _active_config(self) -> ConfigEnvelope | None:

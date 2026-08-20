@@ -56,6 +56,14 @@ class ConfigStore:
         with self._lock:
             return dict(self._configs)
 
+    def delete(self, scope: str) -> bool:
+        with self._lock:
+            existed = scope in self._configs
+            if existed:
+                del self._configs[scope]
+                self._flush()
+            return existed
+
     def put_ack(self, ack: ConfigAck) -> None:
         with self._lock:
             self._acks[ack.host_id] = ack

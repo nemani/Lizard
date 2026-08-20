@@ -61,6 +61,33 @@ def test_global_config_is_stored_but_not_applied_when_host_config_exists() -> No
     assert state.get_settings().interval_seconds == 5
 
 
+def test_empty_host_config_payload_clears_host_override() -> None:
+    settings = EggSettings(host_id="gpu-01", hostname="gpu-01")
+    state = RuntimeState(settings)
+    state.apply_remote_config(
+        "lizard/config/global",
+        ConfigEnvelope(
+            scope="global",
+            version=1,
+            config=AlertConfig(interval_seconds=20),
+        ).model_dump_json().encode(),
+    )
+    state.apply_remote_config(
+        "lizard/servers/gpu-01/config",
+        ConfigEnvelope(
+            scope="host:gpu-01",
+            version=1,
+            config=AlertConfig(interval_seconds=5),
+        ).model_dump_json().encode(),
+    )
+
+    ack = state.apply_remote_config("lizard/servers/gpu-01/config", b"")
+
+    assert ack.status == "applied"
+    assert ack.active_scope == "global"
+    assert state.get_settings().interval_seconds == 20
+
+
 def test_egg_settings_rejects_invalid_host_id_at_startup() -> None:
     with pytest.raises(ValidationError):
         EggSettings(host_id="../gpu-01", hostname="gpu-01")

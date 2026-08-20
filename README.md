@@ -184,6 +184,12 @@ curl -X POST http://localhost:8000/servers/gpu-01/config \
   }'
 ```
 
+Clear a host override so the egg falls back to global config:
+
+```bash
+curl -X DELETE http://localhost:8000/servers/gpu-01/config
+```
+
 The dashboard at `/` uses the same endpoints. It separates monitoring and config into tabs, shows latest 🥚 status, heartbeat state, uptime, last seen age, CPU/RAM/GPU/disk time-series charts, per-core CPU, per-device disk usage, latest alerts, and a form for publishing global or per-host local alert config.
 
 Disk usage is reported once per backing device. The 🥚 enumerates mounted filesystems, deduplicates by `device`, and samples usage from the first accessible mountpoint for that device. This is intended for host-level Linux installs; Docker bind/overlay mounts may look different.

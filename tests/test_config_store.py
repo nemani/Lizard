@@ -46,6 +46,17 @@ def test_config_store_persists_acks(tmp_path) -> None:
     assert reloaded.acks()["gpu-01"].active_version == 1
 
 
+def test_config_store_deletes_scoped_config(tmp_path) -> None:
+    store = ConfigStore(tmp_path)
+    store.next_envelope("host:gpu-01", AlertConfig(interval_seconds=5))
+
+    assert store.delete("host:gpu-01") is True
+    assert store.delete("host:gpu-01") is False
+
+    reloaded = ConfigStore(tmp_path)
+    assert reloaded.get("host:gpu-01") is None
+
+
 def test_config_store_skips_corrupt_persisted_state(tmp_path) -> None:
     (tmp_path / "configs.json").write_text("{not-json", encoding="utf-8")
 
