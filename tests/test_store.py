@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from lizard.common.models import CpuMetrics, HostInventory, MemoryMetrics, MetricsEnvelope
-from lizard.nest.store import MetricsStore
+from lizard.nest.store import MetricsStore, _read_tail_lines
 
 
 def _envelope(host_id: str, cpu_percent: float) -> MetricsEnvelope:
@@ -69,6 +69,13 @@ def test_store_reload_uses_latest_valid_jsonl_line(tmp_path) -> None:
     latest = store.get("gpu-01")
     assert latest is not None
     assert latest.cpu.overall_percent == 10
+
+
+def test_read_tail_lines_returns_only_requested_suffix(tmp_path) -> None:
+    path = tmp_path / "large.jsonl"
+    path.write_text("\n".join(str(index) for index in range(3000)) + "\n", encoding="utf-8")
+
+    assert _read_tail_lines(path, 3) == ["2997", "2998", "2999"]
 
 
 def test_store_reports_host_status_from_latest_heartbeat(tmp_path) -> None:

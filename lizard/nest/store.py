@@ -127,9 +127,22 @@ def _read_tail_lines(path: Path, limit: int) -> list[str]:
     if limit <= 0:
         return []
 
-    with path.open("r", encoding="utf-8") as handle:
-        lines = handle.readlines()
-    return [line.strip() for line in lines[-limit:]]
+    chunk_size = 8192
+    chunks: list[bytes] = []
+    lines_seen = 0
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        position = handle.tell()
+        while position > 0 and lines_seen <= limit:
+            read_size = min(chunk_size, position)
+            position -= read_size
+            handle.seek(position)
+            chunk = handle.read(read_size)
+            chunks.append(chunk)
+            lines_seen += chunk.count(b"\n")
+
+    data = b"".join(reversed(chunks))
+    return [line.decode("utf-8").strip() for line in data.splitlines()[-limit:]]
 
 
 def _status_for_envelope(
