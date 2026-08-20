@@ -60,10 +60,10 @@ def render_prometheus_metrics(
                 lines.append(f"lizard_gpu_memory_percent{gpu_labels} {gpu.memory_percent}")
             if gpu.temperature_celsius is not None:
                 lines.append(f"lizard_gpu_temperature_celsius{gpu_labels} {gpu.temperature_celsius}")
-        for temperature in envelope.temperatures:
+        for entry_index, temperature in enumerate(envelope.temperatures):
             lines.append(
                 "lizard_temperature_celsius"
-                f"{_labels(host_id=envelope.host_id, hostname=envelope.hostname, sensor=temperature.sensor, label=temperature.label)} "
+                f"{_labels(host_id=envelope.host_id, hostname=envelope.hostname, sensor=temperature.sensor, label=temperature.label, entry=str(entry_index))} "
                 f"{temperature.current_celsius}"
             )
 

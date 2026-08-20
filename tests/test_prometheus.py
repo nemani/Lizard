@@ -1,6 +1,13 @@
 from datetime import datetime, timezone
 
-from lizard.common.models import CpuMetrics, DiskMetrics, HostStatus, MemoryMetrics, MetricsEnvelope
+from lizard.common.models import (
+    CpuMetrics,
+    DiskMetrics,
+    HostStatus,
+    MemoryMetrics,
+    MetricsEnvelope,
+    TemperatureMetrics,
+)
 from lizard.nest.prometheus import render_prometheus_metrics
 
 
@@ -22,7 +29,10 @@ def test_render_prometheus_metrics_includes_core_metrics_and_status() -> None:
                 percent=40,
             )
         ],
-        temperatures=[],
+        temperatures=[
+            TemperatureMetrics(sensor="acpitz", label="acpitz", current_celsius=42),
+            TemperatureMetrics(sensor="acpitz", label="acpitz", current_celsius=44),
+        ],
         gpus=[],
     )
     status = HostStatus(
@@ -43,3 +53,11 @@ def test_render_prometheus_metrics_includes_core_metrics_and_status() -> None:
     assert 'lizard_disk_percent{host_id="gpu-01",hostname="gpu-\\"01",mountpoint="/",device="/dev/sda1"} 40.0' in rendered
     assert 'lizard_agent_uptime_seconds{host_id="gpu-01",hostname="gpu-\\"01"} 42' in rendered
     assert 'lizard_host_status{host_id="gpu-01",hostname="gpu-\\"01",state="online"} 1' in rendered
+    assert (
+        'lizard_temperature_celsius{host_id="gpu-01",hostname="gpu-\\"01",sensor="acpitz",label="acpitz",entry="0"} 42.0'
+        in rendered
+    )
+    assert (
+        'lizard_temperature_celsius{host_id="gpu-01",hostname="gpu-\\"01",sensor="acpitz",label="acpitz",entry="1"} 44.0'
+        in rendered
+    )
