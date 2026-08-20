@@ -135,6 +135,24 @@ INDEX_HTML = r"""<!doctype html>
       gap: 8px;
     }
 
+    .host-filter {
+      margin-bottom: 10px;
+    }
+
+    .toggle {
+      display: flex;
+      grid-template-columns: none;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .toggle input {
+      width: auto;
+      margin: 0;
+    }
+
     .host-card {
       width: 100%;
       text-align: left;
@@ -371,7 +389,13 @@ INDEX_HTML = r"""<!doctype html>
           <h2>🥚 Eggs</h2>
           <span class="muted small" id="host-count">0</span>
         </div>
-        <div class="section-body host-list" id="hosts"></div>
+        <div class="section-body">
+          <label class="toggle small host-filter">
+            <input id="hide-offline" type="checkbox">
+            Hide offline
+          </label>
+          <div class="host-list" id="hosts"></div>
+        </div>
       </section>
 
       <section class="section config-panel">
@@ -507,6 +531,7 @@ INDEX_HTML = r"""<!doctype html>
       statuses: new Map(),
       inventories: new Map(),
       selectedHostId: null,
+      hideOffline: false,
       autoRefresh: true,
       timer: null
     };
@@ -523,6 +548,12 @@ INDEX_HTML = r"""<!doctype html>
     $("save-config").addEventListener("click", saveConfig);
     $("config-scope").addEventListener("change", loadSelectedConfig);
     $("refresh-inventory").addEventListener("click", refreshInventory);
+    $("hide-offline").addEventListener("change", () => {
+      state.hideOffline = $("hide-offline").checked;
+      renderHosts();
+      renderSelected();
+      loadSeries();
+    });
 
     document.body.dataset.tab = "monitor";
     refreshAll();
@@ -560,21 +591,63 @@ INDEX_HTML = r"""<!doctype html>
       });
     }
 
+    function sortServers(servers) {
+      return [...servers].sort((left, right) => {
+        const leftState = hostState(left);
+        const rightState = hostState(right);
+        const stateDelta = stateRank(leftState) - stateRank(rightState);
+        if (stateDelta !== 0) return stateDelta;
+        return (left.hostname || left.host_id).localeCompare(right.hostname || right.host_id);
+      });
+    }
+
+    function shouldShowHost(server) {
+      return !(state.hideOffline && hostState(server) === "offline");
+    }
+
+    function hostState(server) {
+      return state.statuses.get(server.host_id)?.state || "unknown";
+    }
+
+    function stateRank(hostState) {
+      if (hostState === "online") return 0;
+      if (hostState === "stale") return 1;
+      if (hostState === "unknown") return 2;
+      if (hostState === "offline") return 3;
+      return 4;
+    }
+
+    function countStates(servers) {
+      return servers.reduce((counts, server) => {
+        const current = hostState(server);
+        counts[current] = (counts[current] || 0) + 1;
+        return counts;
+      }, {online: 0, stale: 0, offline: 0, unknown: 0});
+    }
+
     function renderHosts() {
-      $("host-count").textContent = `${state.servers.length}`;
-      $("summary").textContent = `${state.servers.length} eggs reporting`;
+      const sortedServers = sortServers(state.servers);
+      const visibleServers = sortedServers.filter((server) => shouldShowHost(server));
+      if (state.selectedHostId && !visibleServers.some((server) => server.host_id === state.selectedHostId)) {
+        state.selectedHostId = visibleServers[0]?.host_id || null;
+      }
+      const counts = countStates(state.servers);
+      $("host-count").textContent = state.hideOffline ? `${visibleServers.length}/${state.servers.length}` : `${state.servers.length}`;
+      $("summary").textContent = `${counts.online} online, ${counts.stale} stale, ${counts.offline} offline`;
       const hosts = $("hosts");
       hosts.innerHTML = "";
       const scope = $("config-scope");
       const currentScope = scope.value;
       scope.innerHTML = `<option value="global">Global</option>`;
 
-      state.servers.forEach((server) => {
+      sortedServers.forEach((server) => {
         const option = document.createElement("option");
         option.value = `host:${server.host_id}`;
         option.textContent = server.host_id;
         scope.appendChild(option);
+      });
 
+      visibleServers.forEach((server) => {
         const card = document.createElement("button");
         card.className = `host-card ${server.host_id === state.selectedHostId ? "active" : ""}`;
         card.addEventListener("click", () => {
@@ -599,6 +672,10 @@ INDEX_HTML = r"""<!doctype html>
         `;
         hosts.appendChild(card);
       });
+
+      if (!visibleServers.length) {
+        hosts.innerHTML = `<div class="muted small">No eggs match this filter.</div>`;
+      }
 
       if ([...scope.options].some((option) => option.value === currentScope)) scope.value = currentScope;
     }
