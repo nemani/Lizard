@@ -133,10 +133,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         while not SHUTDOWN:
             settings = state.get_settings()
-            envelope = collect_metrics(settings, agent_started_at=agent_started_at)
-            topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/metrics"
-            publish_json(client, topic, envelope.model_dump(mode="json"))
-            LOGGER.info("published metrics to %s alerts=%s", topic, len(envelope.alerts))
+            try:
+                envelope = collect_metrics(settings, agent_started_at=agent_started_at)
+                topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/metrics"
+                publish_json(client, topic, envelope.model_dump(mode="json"))
+                LOGGER.info("published metrics to %s alerts=%s", topic, len(envelope.alerts))
+            except (RuntimeError, TimeoutError):
+                LOGGER.exception("failed to publish metrics; will retry next interval")
             if args.once:
                 break
             time.sleep(settings.interval_seconds)
@@ -194,7 +197,10 @@ def _publish_inventory(mqtt_client: mqtt.Client, settings: EggSettings, wait: bo
     topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/inventory"
     try:
         publish_text(mqtt_client, topic, inventory.model_dump_json(), qos=1, retain=True, wait=wait)
-        LOGGER.info("published inventory to %s", topic)
+        if wait:
+            LOGGER.info("published inventory to %s", topic)
+        else:
+            LOGGER.info("queued inventory publish to %s", topic)
     except (RuntimeError, TimeoutError) as exc:
         LOGGER.warning("failed to publish inventory to %s: %s", topic, exc)
 
