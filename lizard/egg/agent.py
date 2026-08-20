@@ -6,7 +6,6 @@ import logging
 import signal
 import sys
 import threading
-import time
 from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
@@ -19,7 +18,7 @@ from lizard.egg.config import EggSettings
 from lizard.egg.inventory import collect_inventory
 
 LOGGER = logging.getLogger(__name__)
-SHUTDOWN = False
+SHUTDOWN = threading.Event()
 
 
 class RuntimeState:
@@ -143,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         settings.interval_seconds,
     )
     try:
-        while not SHUTDOWN:
+        while not SHUTDOWN.is_set():
             settings = state.get_settings()
             try:
                 envelope = collect_metrics(settings, agent_started_at=agent_started_at)
@@ -156,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
                 _publish_inventory(client, state.get_settings())
             if args.once:
                 break
-            time.sleep(settings.interval_seconds)
+            SHUTDOWN.wait(settings.interval_seconds)
     finally:
         client.loop_stop()
         client.disconnect()
@@ -164,9 +163,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _handle_shutdown(signum: int, _frame: object) -> None:
-    global SHUTDOWN
     LOGGER.info("received signal %s; shutting down", signum)
-    SHUTDOWN = True
+    SHUTDOWN.set()
 
 
 def _build_on_connect(settings: EggSettings):

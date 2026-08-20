@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from lizard.common.models import AlertConfig, ConfigEnvelope
+from lizard.egg import agent
 from lizard.egg.agent import RuntimeState
 from lizard.egg.config import EggSettings
 
@@ -74,3 +75,12 @@ def test_inventory_publish_request_is_consumed_once() -> None:
 
     assert state.consume_inventory_publish_request() is True
     assert state.consume_inventory_publish_request() is False
+
+
+def test_shutdown_handler_sets_event() -> None:
+    agent.SHUTDOWN.clear()
+
+    agent._handle_shutdown(15, None)
+
+    assert agent.SHUTDOWN.is_set()
+    agent.SHUTDOWN.clear()
