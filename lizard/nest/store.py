@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import logging
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from lizard.common.models import HostInventory, HostStatus, MetricsEnvelope
+
+LOGGER = logging.getLogger(__name__)
 
 
 class MetricsStore:
@@ -71,19 +76,22 @@ class MetricsStore:
         if not path.exists():
             return []
 
-        lines = _read_tail_lines(path, limit)
-        return [MetricsEnvelope.model_validate_json(line) for line in lines if line]
+        with self._lock:
+            lines = _read_tail_lines(path, limit)
+        return _parse_metric_lines(path, lines)
 
     def load_existing_latest(self) -> None:
         for path in self._data_dir.glob("*.jsonl"):
-            last_line = _read_last_line(path)
-            if not last_line:
-                continue
-            envelope = MetricsEnvelope.model_validate_json(last_line)
-            self._latest[envelope.host_id] = envelope
+            envelope = _read_latest_valid_envelope(path)
+            if envelope is not None:
+                self._latest[envelope.host_id] = envelope
         for path in self._data_dir.glob("*.inventory.json"):
-            inventory = HostInventory.model_validate_json(path.read_text(encoding="utf-8"))
-            self._inventory[inventory.host_id] = inventory
+            try:
+                inventory = HostInventory.model_validate_json(path.read_text(encoding="utf-8"))
+            except (OSError, ValidationError, ValueError):
+                LOGGER.warning("skipping invalid inventory file: %s", path)
+            else:
+                self._inventory[inventory.host_id] = inventory
 
     def _host_path(self, host_id: str, suffix: str) -> Path:
         path = (self._data_dir / f"{host_id}{suffix}").resolve()
@@ -92,22 +100,27 @@ class MetricsStore:
         return path
 
 
-def _read_last_line(path: Path) -> str | None:
-    with path.open("rb") as handle:
-        handle.seek(0, 2)
-        position = handle.tell()
-        if position == 0:
-            return None
-        buffer = bytearray()
-        position -= 1
-        while position >= 0:
-            handle.seek(position)
-            char = handle.read(1)
-            if char == b"\n" and buffer:
-                break
-            buffer.extend(char)
-            position -= 1
-        return bytes(reversed(buffer)).decode("utf-8").strip()
+def _read_latest_valid_envelope(path: Path) -> MetricsEnvelope | None:
+    for line in reversed(_read_tail_lines(path, 1000)):
+        if not line:
+            continue
+        try:
+            return MetricsEnvelope.model_validate_json(line)
+        except (ValidationError, ValueError):
+            LOGGER.warning("skipping invalid metrics line in %s", path)
+    return None
+
+
+def _parse_metric_lines(path: Path, lines: list[str]) -> list[MetricsEnvelope]:
+    envelopes: list[MetricsEnvelope] = []
+    for line in lines:
+        if not line:
+            continue
+        try:
+            envelopes.append(MetricsEnvelope.model_validate_json(line))
+        except (ValidationError, ValueError):
+            LOGGER.warning("skipping invalid metrics line in %s", path)
+    return envelopes
 
 
 def _read_tail_lines(path: Path, limit: int) -> list[str]:

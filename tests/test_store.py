@@ -44,6 +44,33 @@ def test_store_returns_host_history_in_order(tmp_path) -> None:
     assert [item.cpu.overall_percent for item in history] == [20, 30]
 
 
+def test_store_history_skips_malformed_jsonl_lines(tmp_path) -> None:
+    store = MetricsStore(tmp_path)
+    store.put(_envelope("gpu-01", 10))
+    (tmp_path / "gpu-01.jsonl").write_text(
+        f"{_envelope('gpu-01', 10).model_dump_json()}\n{{not-json\n{_envelope('gpu-01', 20).model_dump_json()}\n",
+        encoding="utf-8",
+    )
+
+    history = store.history("gpu-01", limit=10)
+
+    assert [item.cpu.overall_percent for item in history] == [10, 20]
+
+
+def test_store_reload_uses_latest_valid_jsonl_line(tmp_path) -> None:
+    (tmp_path / "gpu-01.jsonl").write_text(
+        f"{_envelope('gpu-01', 10).model_dump_json()}\n{{truncated\n",
+        encoding="utf-8",
+    )
+
+    store = MetricsStore(tmp_path)
+    store.load_existing_latest()
+
+    latest = store.get("gpu-01")
+    assert latest is not None
+    assert latest.cpu.overall_percent == 10
+
+
 def test_store_reports_host_status_from_latest_heartbeat(tmp_path) -> None:
     now = datetime.now(timezone.utc)
     store = MetricsStore(tmp_path)

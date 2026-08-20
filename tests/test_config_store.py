@@ -44,3 +44,44 @@ def test_config_store_persists_acks(tmp_path) -> None:
     reloaded = ConfigStore(tmp_path)
 
     assert reloaded.acks()["gpu-01"].active_version == 1
+
+
+def test_config_store_skips_corrupt_persisted_state(tmp_path) -> None:
+    (tmp_path / "configs.json").write_text("{not-json", encoding="utf-8")
+
+    store = ConfigStore(tmp_path)
+
+    assert store.all() == {}
+    assert store.acks() == {}
+
+
+def test_config_store_skips_invalid_entries(tmp_path) -> None:
+    (tmp_path / "configs.json").write_text(
+        """
+        {
+          "configs": {
+            "global": {"scope": "global", "version": 1, "config": {"interval_seconds": 10}},
+            "bad": {"scope": "bad", "version": 0, "config": {}}
+          },
+          "acks": {
+            "gpu-01": {
+              "host_id": "gpu-01",
+              "hostname": "gpu-01",
+              "scope": "global",
+              "version": 1,
+              "active_scope": "global",
+              "active_version": 1,
+              "status": "applied",
+              "message": "ok"
+            },
+            "bad": {"host_id": "../bad"}
+          }
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    store = ConfigStore(tmp_path)
+
+    assert set(store.all()) == {"global"}
+    assert set(store.acks()) == {"gpu-01"}
