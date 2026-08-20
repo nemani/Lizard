@@ -447,8 +447,8 @@ INDEX_HTML = r"""<!doctype html>
         </div>
         <div class="section-body chart-grid">
           <div class="chart-box"><h3>CPU %</h3><canvas id="chart-cpu"></canvas></div>
-          <div class="chart-box wide"><h3>Per-Core CPU %</h3><canvas id="chart-cpu-cores"></canvas></div>
           <div class="chart-box"><h3>Memory %</h3><canvas id="chart-memory"></canvas></div>
+          <div class="chart-box wide"><h3>Per-Core CPU %</h3><canvas id="chart-cpu-cores"></canvas></div>
           <div class="chart-box"><h3>GPU %</h3><canvas id="chart-gpu"></canvas></div>
           <div class="chart-box"><h3>Disk %</h3><canvas id="chart-disk"></canvas></div>
         </div>
