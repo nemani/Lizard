@@ -232,6 +232,10 @@ INDEX_HTML = r"""<!doctype html>
       min-width: 0;
     }
 
+    .chart-box.wide {
+      grid-column: 1 / -1;
+    }
+
     canvas {
       width: 100%;
       height: 210px;
@@ -362,7 +366,7 @@ INDEX_HTML = r"""<!doctype html>
 
   <main>
     <aside class="sidebar">
-      <section class="section">
+      <section class="section monitor-panel">
         <div class="section-head">
           <h2>🥚 Eggs</h2>
           <span class="muted small" id="host-count">0</span>
@@ -419,6 +423,7 @@ INDEX_HTML = r"""<!doctype html>
         </div>
         <div class="section-body chart-grid">
           <div class="chart-box"><h3>CPU %</h3><canvas id="chart-cpu"></canvas></div>
+          <div class="chart-box wide"><h3>Per-Core CPU %</h3><canvas id="chart-cpu-cores"></canvas></div>
           <div class="chart-box"><h3>Memory %</h3><canvas id="chart-memory"></canvas></div>
           <div class="chart-box"><h3>GPU %</h3><canvas id="chart-gpu"></canvas></div>
           <div class="chart-box"><h3>Disk %</h3><canvas id="chart-disk"></canvas></div>
@@ -431,10 +436,6 @@ INDEX_HTML = r"""<!doctype html>
           <button class="secondary" id="refresh-inventory">Refresh inventory</button>
         </div>
         <div class="section-body detail-grid">
-          <div>
-            <h3>Per-Core CPU</h3>
-            <div id="cpu-cores"></div>
-          </div>
           <div>
             <h3>Per-Device Usage</h3>
             <div id="disk-details"></div>
@@ -610,7 +611,6 @@ INDEX_HTML = r"""<!doctype html>
         $("selected-health").textContent = "idle";
         $("latest-metrics").innerHTML = "";
         $("alerts").innerHTML = "";
-        $("cpu-cores").innerHTML = "";
         $("disk-details").innerHTML = "";
         $("inventory-details").innerHTML = "";
         $("gpu-details").innerHTML = "";
@@ -652,10 +652,6 @@ INDEX_HTML = r"""<!doctype html>
 
     function renderDetails(server) {
       const inventory = state.inventories.get(server.host_id);
-      $("cpu-cores").innerHTML = table(
-        ["Core", "Usage"],
-        server.cpu.per_core_percent.map((value, index) => [index, formatPercent(value)])
-      );
       $("disk-details").innerHTML = table(
         ["Device", "Sampled mount", "Used", "Free", "Usage"],
         server.disks.map((disk) => [
@@ -704,6 +700,9 @@ INDEX_HTML = r"""<!doctype html>
       const limit = $("series-limit").value;
       const rows = await getJson(`/servers/${encodeURIComponent(hostId)}/series?limit=${limit}`);
       drawChart("chart-cpu", rows.map((row) => [row.timestamp, row.cpu.overall_percent]), "#0b6b57");
+      drawMultiChart("chart-cpu-cores", buildCoreSeries(rows), [
+        "#0b6b57", "#315f9f", "#af6a00", "#7b3f98", "#b3261e", "#137333", "#5f6368", "#00838f"
+      ]);
       drawChart("chart-memory", rows.map((row) => [row.timestamp, row.memory.percent]), "#315f9f");
       drawChart("chart-gpu", rows.map((row) => [row.timestamp, avg(row.gpus.map((gpu) => gpu.utilization_percent).filter((value) => value !== null))]), "#7b3f98");
       drawChart("chart-disk", rows.map((row) => [row.timestamp, max(row.disks.map((disk) => disk.percent))]), "#af6a00");
@@ -804,7 +803,7 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     function drawEmptyCharts() {
-      ["chart-cpu", "chart-memory", "chart-gpu", "chart-disk"].forEach((id) => drawChart(id, [], "#0b6b57"));
+      ["chart-cpu", "chart-cpu-cores", "chart-memory", "chart-gpu", "chart-disk"].forEach((id) => drawChart(id, [], "#0b6b57"));
     }
 
     function drawChart(id, rows, color) {
@@ -853,6 +852,76 @@ INDEX_HTML = r"""<!doctype html>
       const latest = points[points.length - 1][1];
       ctx.fillStyle = color;
       ctx.fillText(`${latest.toFixed(1)}%`, width - 70 * scale, 18 * scale);
+    }
+
+    function buildCoreSeries(rows) {
+      const coreCount = rows.reduce((count, row) => Math.max(count, row.cpu.per_core_percent.length), 0);
+      return Array.from({length: coreCount}, (_, index) => ({
+        label: `CPU ${index}`,
+        rows: rows.map((row) => [row.timestamp, row.cpu.per_core_percent[index] ?? null])
+      }));
+    }
+
+    function drawMultiChart(id, series, colors) {
+      const canvas = $(id);
+      const rect = canvas.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      canvas.width = Math.max(320, Math.floor(rect.width * scale));
+      canvas.height = Math.floor(210 * scale);
+      const ctx = canvas.getContext("2d");
+      const width = canvas.width;
+      const height = canvas.height;
+      const pad = 34 * scale;
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = "#d7dce0";
+      ctx.lineWidth = scale;
+      ctx.beginPath();
+      ctx.moveTo(pad, 10 * scale);
+      ctx.lineTo(pad, height - pad);
+      ctx.lineTo(width - 10 * scale, height - pad);
+      ctx.stroke();
+
+      ctx.fillStyle = "#626a73";
+      ctx.font = `${12 * scale}px system-ui`;
+      ctx.fillText("0", 8 * scale, height - pad);
+      ctx.fillText("100", 8 * scale, 18 * scale);
+
+      const populated = series
+        .map((item) => ({
+          label: item.label,
+          rows: item.rows.filter((row) => row[1] !== null && Number.isFinite(row[1]))
+        }))
+        .filter((item) => item.rows.length);
+
+      if (!populated.length) {
+        ctx.fillText("No data", pad + 10 * scale, height / 2);
+        return;
+      }
+
+      populated.forEach((item, seriesIndex) => {
+        ctx.strokeStyle = colors[seriesIndex % colors.length];
+        ctx.lineWidth = 2 * scale;
+        ctx.beginPath();
+        item.rows.forEach((point, index) => {
+          const x = pad + ((width - pad - 14 * scale) * index / Math.max(item.rows.length - 1, 1));
+          const y = height - pad - ((height - pad - 28 * scale) * Math.max(0, Math.min(100, point[1])) / 100);
+          if (index === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+
+      const legend = populated.slice(0, 8);
+      legend.forEach((item, index) => {
+        const x = pad + index * 74 * scale;
+        const y = 18 * scale;
+        ctx.fillStyle = colors[index % colors.length];
+        ctx.fillRect(x, y - 8 * scale, 10 * scale, 10 * scale);
+        ctx.fillStyle = "#626a73";
+        ctx.fillText(item.label, x + 14 * scale, y);
+      });
     }
 
     async function getJson(path) {
