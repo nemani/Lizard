@@ -9,12 +9,13 @@ from contextlib import asynccontextmanager
 import paho.mqtt.client as mqtt
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from lizard.common.models import AlertConfig, ConfigAck, ConfigEnvelope, HostStatus, MetricsEnvelope
 from lizard.common.mqtt import MqttSettings, build_client
 from lizard.nest.config import NestSettings
 from lizard.nest.config_store import ConfigStore
+from lizard.nest.prometheus import render_prometheus_metrics
 from lizard.nest.store import MetricsStore
 from lizard.nest.ui import INDEX_HTML
 
@@ -84,6 +85,12 @@ def servers() -> list[MetricsEnvelope]:
 @app.get("/servers/status")
 def server_statuses() -> list[HostStatus]:
     return store.statuses(settings.host_stale_seconds, settings.host_offline_seconds)
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def prometheus_metrics() -> str:
+    statuses = store.statuses(settings.host_stale_seconds, settings.host_offline_seconds)
+    return render_prometheus_metrics(store.latest(), statuses)
 
 
 @app.get("/servers/{host_id}")
