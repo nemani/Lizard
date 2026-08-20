@@ -63,7 +63,7 @@ def startup() -> None:
     client = build_client("lizard-nest", mqtt_settings)
     client.on_connect = _on_connect
     client.on_message = _on_message
-    client.connect(mqtt_settings.host, mqtt_settings.port, keepalive=60)
+    client.connect_async(mqtt_settings.host, mqtt_settings.port, keepalive=60)
     client.loop_start()
     LOGGER.info("started lizard nest mqtt=%s:%s", settings.mqtt_host, settings.mqtt_port)
 

@@ -131,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     if settings.remote_config_enabled:
         client.on_connect = _build_on_connect(settings)
         client.on_message = _build_on_message(state, settings)
-    client.connect(mqtt_settings.host, mqtt_settings.port, keepalive=60)
+    client.connect_async(mqtt_settings.host, mqtt_settings.port, keepalive=60)
     client.loop_start()
     _publish_inventory(client, settings)
 
