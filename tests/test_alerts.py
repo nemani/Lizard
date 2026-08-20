@@ -1,7 +1,10 @@
+from types import SimpleNamespace
+
 import pytest
 from pydantic import ValidationError
 
 from lizard.common.models import CpuMetrics, DiskMetrics, GpuMetrics, MemoryMetrics
+from lizard.egg import collector
 from lizard.egg.collector import _evaluate_alerts
 from lizard.egg.config import AlertThreshold, EggSettings
 
@@ -54,9 +57,38 @@ def test_alerts_include_disk_and_gpu_thresholds() -> None:
     )
 
     assert {alert.metric for alert in alerts} == {
-        "disk.percent:/data",
+        "disk.percent:/dev/sdb1",
         "gpu.utilization_percent:0",
     }
+
+
+def test_disk_collection_dedupes_by_device(monkeypatch) -> None:
+    monkeypatch.setattr(
+        collector.psutil,
+        "disk_partitions",
+        lambda all=False: [
+            SimpleNamespace(device="/dev/sda1", mountpoint="/", fstype="ext4"),
+            SimpleNamespace(device="/dev/sda1", mountpoint="/host", fstype="ext4"),
+            SimpleNamespace(device="/dev/sdb1", mountpoint="/data", fstype="ext4"),
+        ],
+    )
+    monkeypatch.setattr(
+        collector.psutil,
+        "disk_usage",
+        lambda mountpoint: SimpleNamespace(
+            total=100,
+            used=40 if mountpoint == "/" else 50,
+            free=60,
+            percent=40.0,
+        ),
+    )
+
+    disks = collector._collect_disks()
+
+    assert [(disk.device, disk.mountpoint) for disk in disks] == [
+        ("/dev/sda1", "/"),
+        ("/dev/sdb1", "/data"),
+    ]
 
 
 def test_remote_config_updates_runtime_thresholds() -> None:

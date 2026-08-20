@@ -436,7 +436,7 @@ INDEX_HTML = r"""<!doctype html>
             <div id="cpu-cores"></div>
           </div>
           <div>
-            <h3>Per-Disk Usage</h3>
+            <h3>Per-Device Usage</h3>
             <div id="disk-details"></div>
           </div>
           <div>
@@ -657,10 +657,10 @@ INDEX_HTML = r"""<!doctype html>
         server.cpu.per_core_percent.map((value, index) => [index, formatPercent(value)])
       );
       $("disk-details").innerHTML = table(
-        ["Mount", "Device", "Used", "Free", "Usage"],
+        ["Device", "Sampled mount", "Used", "Free", "Usage"],
         server.disks.map((disk) => [
-          disk.mountpoint,
           disk.device,
+          disk.mountpoint,
           formatBytes(disk.used_bytes),
           formatBytes(disk.free_bytes),
           formatPercent(disk.percent)

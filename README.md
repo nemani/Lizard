@@ -1,6 +1,6 @@
 # 🦎 Lizard
 
-🦎 Lizard monitors Ubuntu 22.04 Linux servers with GPUs. Each monitored server runs a **🥚 egg** agent that samples CPU, per-core CPU, RAM, per-disk usage, temperatures, and NVIDIA GPU usage, then publishes metrics over MQTT. A central **nest** service subscribes to those messages, stores JSONL history, exports Prometheus metrics, and exposes the latest status over HTTP.
+🦎 Lizard monitors Ubuntu 22.04 Linux servers with GPUs. Each monitored server runs a **🥚 egg** agent that samples CPU, per-core CPU, RAM, per-device disk usage, temperatures, and NVIDIA GPU usage, then publishes metrics over MQTT. A central **nest** service subscribes to those messages, stores JSONL history, exports Prometheus metrics, and exposes the latest status over HTTP.
 
 ## Components
 
@@ -172,7 +172,9 @@ curl -X POST http://localhost:8000/servers/gpu-01/config \
   }'
 ```
 
-The dashboard at `/` uses the same endpoints. It separates monitoring and config into tabs, shows latest 🥚 status, heartbeat state, uptime, last seen age, CPU/RAM/GPU/disk time-series charts, per-core CPU, per-disk usage, latest alerts, and a form for publishing global or per-host local alert config.
+The dashboard at `/` uses the same endpoints. It separates monitoring and config into tabs, shows latest 🥚 status, heartbeat state, uptime, last seen age, CPU/RAM/GPU/disk time-series charts, per-core CPU, per-device disk usage, latest alerts, and a form for publishing global or per-host local alert config.
+
+Disk usage is reported once per backing device. The 🥚 enumerates mounted filesystems, deduplicates by `device`, and samples usage from the first accessible mountpoint for that device. This is intended for host-level Linux installs; Docker bind/overlay mounts may look different.
 
 ## Host Inventory
 

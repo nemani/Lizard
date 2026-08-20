@@ -26,9 +26,9 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
       "id": 2,
       "targets": [
-        {"expr": "lizard_disk_percent{host_id=\"$host_id\"}", "legendFormat": "{{mountpoint}} {{device}}"}
+        {"expr": "lizard_disk_percent{host_id=\"$host_id\"}", "legendFormat": "{{device}} via {{mountpoint}}"}
       ],
-      "title": "Per-Disk Usage",
+      "title": "Per-Device Disk Usage",
       "type": "timeseries"
     },
     {

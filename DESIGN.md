@@ -1,6 +1,6 @@
 # 🦎 Lizard Design
 
-🦎 Lizard is a push-based edge monitoring prototype for Ubuntu 22.04 NVIDIA GPU devices. Each device runs a lightweight `lizard-egg` 🥚 agent that samples CPU, per-core CPU, RAM, per-disk usage, temperature, and GPU metrics, evaluates local alert thresholds, and publishes metrics to MQTT. A central `lizard-nest` service consumes MQTT, exposes a fleet/config UI and API, exports Prometheus metrics, and publishes retained versioned config back to eggs.
+🦎 Lizard is a push-based edge monitoring prototype for Ubuntu 22.04 NVIDIA GPU devices. Each device runs a lightweight `lizard-egg` 🥚 agent that samples CPU, per-core CPU, RAM, per-device disk usage, temperature, and GPU metrics, evaluates local alert thresholds, and publishes metrics to MQTT. A central `lizard-nest` service consumes MQTT, exposes a fleet/config UI and API, exports Prometheus metrics, and publishes retained versioned config back to eggs.
 
 ## Architecture
 
@@ -16,6 +16,8 @@ MQTT is used because edge devices are often behind client firewalls/NAT and push
 Prometheus scrapes Nest's `/metrics` endpoint for long-term metric querying and Grafana dashboards. Grafana includes fleet-level and per-host dashboards. Nest still stores JSONL samples and host inventory for the prototype UI and API; in production this JSONL path would be removed or treated as short-lived local cache.
 
 🥚 Eggs publish host inventory on startup, after config changes, and when Nest requests a refresh. Inventory captures OS/kernel, architecture, CPU counts, memory size, disks, and GPUs without resending it on every metrics sample.
+
+Disk metrics are device-oriented: the egg deduplicates mounted filesystems by backing `device` and samples usage from the first accessible mountpoint for that device. This keeps host reporting stable for normal Linux installs, while acknowledging that container overlay/bind mounts can present a different view.
 
 ## Tradeoffs
 

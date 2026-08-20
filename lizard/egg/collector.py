@@ -70,12 +70,16 @@ def _collect_memory() -> MemoryMetrics:
 
 def _collect_disks() -> list[DiskMetrics]:
     disks: list[DiskMetrics] = []
+    seen_devices: set[str] = set()
     for part in psutil.disk_partitions(all=False):
+        if part.device in seen_devices:
+            continue
         try:
             usage = psutil.disk_usage(part.mountpoint)
         except PermissionError:
             LOGGER.debug("skipping disk mount without permission: %s", part.mountpoint)
             continue
+        seen_devices.add(part.device)
         disks.append(
             DiskMetrics(
                 mountpoint=part.mountpoint,
@@ -237,7 +241,7 @@ def _evaluate_alerts(
     for disk in disks:
         _append_threshold_alerts(
             alerts,
-            f"disk.percent:{disk.mountpoint}",
+            f"disk.percent:{disk.device}",
             disk.percent,
             settings.disk_percent_thresholds,
         )
