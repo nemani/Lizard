@@ -91,6 +91,22 @@ def test_disk_collection_dedupes_by_device(monkeypatch) -> None:
     ]
 
 
+def test_nvidia_smi_fallback_treats_bracketed_na_as_missing(monkeypatch) -> None:
+    monkeypatch.setattr(
+        collector.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            stdout="0, NVIDIA A4000, 50, 16376, 2048, 62, [N/A]\n",
+        ),
+    )
+
+    gpus = collector._collect_gpus_with_nvidia_smi()
+
+    assert len(gpus) == 1
+    assert gpus[0].power_watts is None
+    assert gpus[0].utilization_percent == 50
+
+
 def test_remote_config_updates_runtime_thresholds() -> None:
     settings = EggSettings(mqtt_host="broker")
     updated = settings.with_remote_update(

@@ -211,9 +211,14 @@ def _mib_to_bytes(value: str) -> int | None:
 
 
 def _float_or_none(value: str) -> float | None:
-    if value.lower() in {"n/a", "na", ""}:
+    normalized = value.strip().strip("[]").strip().lower()
+    if normalized in {"n/a", "na", ""}:
         return None
-    return float(value)
+    try:
+        return float(normalized)
+    except ValueError:
+        LOGGER.debug("could not parse numeric GPU field: %r", value)
+        return None
 
 
 def _evaluate_alerts(
