@@ -11,7 +11,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
-from lizard.common.models import AlertConfig, ConfigAck, ConfigEnvelope, MetricsEnvelope
+from lizard.common.models import AlertConfig, ConfigAck, ConfigEnvelope, HostStatus, MetricsEnvelope
 from lizard.common.mqtt import MqttSettings, build_client
 from lizard.nest.config import NestSettings
 from lizard.nest.config_store import ConfigStore
@@ -79,6 +79,11 @@ def dashboard() -> str:
 @app.get("/servers")
 def servers() -> list[MetricsEnvelope]:
     return store.latest()
+
+
+@app.get("/servers/status")
+def server_statuses() -> list[HostStatus]:
+    return store.statuses(settings.host_stale_seconds, settings.host_offline_seconds)
 
 
 @app.get("/servers/{host_id}")

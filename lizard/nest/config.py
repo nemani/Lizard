@@ -19,3 +19,5 @@ class NestSettings(BaseSettings):
     listen_host: str = "0.0.0.0"
     listen_port: int = 8000
     data_dir: Path = Field(default=Path("./data"))
+    host_stale_seconds: int = 60
+    host_offline_seconds: int = 300

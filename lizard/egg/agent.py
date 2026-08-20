@@ -7,6 +7,7 @@ import signal
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 from pydantic import ValidationError
@@ -103,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, _handle_shutdown)
 
     settings = EggSettings()
+    agent_started_at = datetime.now(timezone.utc)
     state = RuntimeState(settings)
     mqtt_settings = MqttSettings(
         host=settings.mqtt_host,
@@ -129,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         while not SHUTDOWN:
             settings = state.get_settings()
-            envelope = collect_metrics(settings)
+            envelope = collect_metrics(settings, agent_started_at=agent_started_at)
             topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/metrics"
             publish_json(client, topic, envelope.model_dump(mode="json"))
             LOGGER.info("published metrics to %s alerts=%s", topic, len(envelope.alerts))

@@ -23,7 +23,8 @@ from lizard.egg.config import EggSettings
 LOGGER = logging.getLogger(__name__)
 
 
-def collect_metrics(settings: EggSettings) -> MetricsEnvelope:
+def collect_metrics(settings: EggSettings, agent_started_at: datetime | None = None) -> MetricsEnvelope:
+    now = datetime.now(timezone.utc)
     cpu = _collect_cpu()
     memory = _collect_memory()
     disks = _collect_disks()
@@ -34,7 +35,8 @@ def collect_metrics(settings: EggSettings) -> MetricsEnvelope:
     return MetricsEnvelope(
         host_id=settings.host_id,
         hostname=settings.hostname,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=now,
+        uptime_seconds=(now - agent_started_at).total_seconds() if agent_started_at else None,
         cpu=cpu,
         memory=memory,
         disks=disks,

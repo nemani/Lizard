@@ -92,6 +92,7 @@ class MetricsEnvelope(BaseModel):
     host_id: str
     hostname: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    uptime_seconds: float | None = None
     cpu: CpuMetrics
     memory: MemoryMetrics
     disks: list[DiskMetrics]
@@ -99,3 +100,14 @@ class MetricsEnvelope(BaseModel):
     gpus: list[GpuMetrics]
     alerts: list[Alert] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class HostStatus(BaseModel):
+    host_id: str
+    hostname: str
+    last_seen: datetime
+    age_seconds: float = Field(ge=0)
+    state: str
+    uptime_seconds: float | None = None
+    alert_count: int
+    critical_alert_count: int

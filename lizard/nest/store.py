@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
-from lizard.common.models import MetricsEnvelope
+from lizard.common.models import HostStatus, MetricsEnvelope
 
 
 class MetricsStore:
@@ -23,6 +24,28 @@ class MetricsStore:
     def latest(self) -> list[MetricsEnvelope]:
         with self._lock:
             return sorted(self._latest.values(), key=lambda item: item.host_id)
+
+    def statuses(
+        self,
+        stale_after_seconds: int,
+        offline_after_seconds: int,
+        now: datetime | None = None,
+    ) -> list[HostStatus]:
+        observed_at = now or datetime.now(timezone.utc)
+        with self._lock:
+            latest = list(self._latest.values())
+        return sorted(
+            [
+                _status_for_envelope(
+                    envelope,
+                    observed_at,
+                    stale_after_seconds,
+                    offline_after_seconds,
+                )
+                for envelope in latest
+            ],
+            key=lambda item: item.host_id,
+        )
 
     def get(self, host_id: str) -> MetricsEnvelope | None:
         with self._lock:
@@ -70,3 +93,29 @@ def _read_tail_lines(path: Path, limit: int) -> list[str]:
     with path.open("r", encoding="utf-8") as handle:
         lines = handle.readlines()
     return [line.strip() for line in lines[-limit:]]
+
+
+def _status_for_envelope(
+    envelope: MetricsEnvelope,
+    now: datetime,
+    stale_after_seconds: int,
+    offline_after_seconds: int,
+) -> HostStatus:
+    age_seconds = max(0.0, (now - envelope.timestamp).total_seconds())
+    if age_seconds >= offline_after_seconds:
+        state = "offline"
+    elif age_seconds >= stale_after_seconds:
+        state = "stale"
+    else:
+        state = "online"
+
+    return HostStatus(
+        host_id=envelope.host_id,
+        hostname=envelope.hostname,
+        last_seen=envelope.timestamp,
+        age_seconds=age_seconds,
+        state=state,
+        uptime_seconds=envelope.uptime_seconds,
+        alert_count=len(envelope.alerts),
+        critical_alert_count=sum(1 for alert in envelope.alerts if alert.level == "critical"),
+    )

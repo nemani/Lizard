@@ -423,6 +423,7 @@ INDEX_HTML = r"""<!doctype html>
   <script>
     const state = {
       servers: [],
+      statuses: new Map(),
       selectedHostId: null,
       autoRefresh: true,
       timer: null
@@ -444,8 +445,12 @@ INDEX_HTML = r"""<!doctype html>
     }, 15000);
 
     async function refreshAll() {
-      const servers = await getJson("/servers");
+      const [servers, statuses] = await Promise.all([
+        getJson("/servers"),
+        getJson("/servers/status")
+      ]);
       state.servers = servers;
+      state.statuses = new Map(statuses.map((status) => [status.host_id, status]));
       if (!state.selectedHostId && servers.length) state.selectedHostId = servers[0].host_id;
       if (state.selectedHostId && !servers.find((server) => server.host_id === state.selectedHostId)) {
         state.selectedHostId = servers[0]?.host_id || null;
@@ -485,16 +490,17 @@ INDEX_HTML = r"""<!doctype html>
         });
         const alertClass = server.alerts.some((alert) => alert.level === "critical") ? "critical" :
           server.alerts.length ? "warn" : "";
+        const status = state.statuses.get(server.host_id);
         card.innerHTML = `
           <div class="row">
             <span class="name">${escapeHtml(server.hostname || server.host_id)}</span>
-            <span class="pill ${alertClass}">${server.alerts.length ? server.alerts.length + " alerts" : "ok"}</span>
+            <span class="pill ${statusClass(status, alertClass)}">${status ? status.state : "unknown"}</span>
           </div>
           <div class="row small muted">
             <span>CPU ${formatPercent(server.cpu.overall_percent)}</span>
             <span>RAM ${formatPercent(server.memory.percent)}</span>
           </div>
-          <div class="small muted">${formatTime(server.timestamp)}</div>
+          <div class="small muted">Last seen ${formatAge(status?.age_seconds)} ago</div>
         `;
         hosts.appendChild(card);
       });
@@ -514,10 +520,11 @@ INDEX_HTML = r"""<!doctype html>
       }
 
       $("selected-title").textContent = server.hostname || server.host_id;
-      $("selected-subtitle").textContent = `${server.host_id} - ${formatTime(server.timestamp)}`;
+      const status = state.statuses.get(server.host_id);
+      $("selected-subtitle").textContent = `${server.host_id} - last seen ${formatAge(status?.age_seconds)} ago`;
       const critical = server.alerts.some((alert) => alert.level === "critical");
-      $("selected-health").className = `pill ${critical ? "critical" : server.alerts.length ? "warn" : ""}`;
-      $("selected-health").textContent = critical ? "critical" : server.alerts.length ? "warning" : "ok";
+      $("selected-health").className = `pill ${statusClass(status, critical ? "critical" : server.alerts.length ? "warn" : "")}`;
+      $("selected-health").textContent = status ? status.state : "unknown";
 
       const gpu = avg(server.gpus.map((item) => item.utilization_percent).filter((value) => value !== null));
       const disk = max(server.disks.map((item) => item.percent));
@@ -526,6 +533,8 @@ INDEX_HTML = r"""<!doctype html>
         ${metricTile("RAM", formatPercent(server.memory.percent))}
         ${metricTile("GPU avg", gpu === null ? "n/a" : formatPercent(gpu))}
         ${metricTile("Disk max", disk === null ? "n/a" : formatPercent(disk))}
+        ${metricTile("Uptime", formatDuration(server.uptime_seconds))}
+        ${metricTile("Last seen", formatAge(status?.age_seconds))}
       `;
 
       const alerts = $("alerts");
@@ -718,6 +727,28 @@ INDEX_HTML = r"""<!doctype html>
 
     function formatTime(value) {
       return new Date(value).toLocaleString();
+    }
+
+    function formatAge(seconds) {
+      if (seconds === undefined || seconds === null) return "n/a";
+      return formatDuration(seconds);
+    }
+
+    function formatDuration(seconds) {
+      if (seconds === undefined || seconds === null) return "n/a";
+      const whole = Math.max(0, Math.floor(seconds));
+      if (whole < 60) return `${whole}s`;
+      if (whole < 3600) return `${Math.floor(whole / 60)}m ${whole % 60}s`;
+      const hours = Math.floor(whole / 3600);
+      const minutes = Math.floor((whole % 3600) / 60);
+      return `${hours}h ${minutes}m`;
+    }
+
+    function statusClass(status, fallback) {
+      if (!status) return fallback;
+      if (status.state === "offline") return "critical";
+      if (status.state === "stale") return "warn";
+      return fallback;
     }
 
     function avg(values) {
