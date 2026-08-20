@@ -29,10 +29,21 @@ class RuntimeState:
         self._settings = settings
         self._global_config: ConfigEnvelope | None = None
         self._host_config: ConfigEnvelope | None = None
+        self._inventory_publish_requested = False
 
     def get_settings(self) -> EggSettings:
         with self._lock:
             return self._settings
+
+    def request_inventory_publish(self) -> None:
+        with self._lock:
+            self._inventory_publish_requested = True
+
+    def consume_inventory_publish_request(self) -> bool:
+        with self._lock:
+            requested = self._inventory_publish_requested
+            self._inventory_publish_requested = False
+            return requested
 
     def apply_remote_config(self, topic: str, payload: bytes) -> ConfigAck:
         try:
@@ -140,6 +151,8 @@ def main(argv: list[str] | None = None) -> int:
                 LOGGER.info("published metrics to %s alerts=%s", topic, len(envelope.alerts))
             except (RuntimeError, TimeoutError):
                 LOGGER.exception("failed to publish metrics; will retry next interval")
+            if state.consume_inventory_publish_request():
+                _publish_inventory(client, state.get_settings())
             if args.once:
                 break
             time.sleep(settings.interval_seconds)
@@ -180,14 +193,17 @@ def _build_on_connect(settings: EggSettings):
 def _build_on_message(state: RuntimeState, settings: EggSettings):
     def on_message(mqtt_client: mqtt.Client, _userdata: object, message: mqtt.MQTTMessage) -> None:
         if message.topic.endswith("/inventory/refresh"):
-            _publish_inventory(mqtt_client, settings, wait=False)
+            state.request_inventory_publish()
             return
 
         ack = state.apply_remote_config(message.topic, message.payload)
         topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/config/status"
         payload = ack.model_dump_json()
-        publish_text(mqtt_client, topic, payload, qos=1, retain=True, wait=False)
-        _publish_inventory(mqtt_client, state.get_settings(), wait=False)
+        try:
+            publish_text(mqtt_client, topic, payload, qos=1, retain=True, wait=False)
+        except RuntimeError:
+            LOGGER.exception("failed to queue config ack publish")
+        state.request_inventory_publish()
 
     return on_message
 

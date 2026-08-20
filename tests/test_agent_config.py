@@ -63,3 +63,14 @@ def test_global_config_is_stored_but_not_applied_when_host_config_exists() -> No
 def test_egg_settings_rejects_invalid_host_id_at_startup() -> None:
     with pytest.raises(ValidationError):
         EggSettings(host_id="../gpu-01", hostname="gpu-01")
+
+
+def test_inventory_publish_request_is_consumed_once() -> None:
+    state = RuntimeState(EggSettings(host_id="gpu-01", hostname="gpu-01"))
+
+    assert state.consume_inventory_publish_request() is False
+
+    state.request_inventory_publish()
+
+    assert state.consume_inventory_publish_request() is True
+    assert state.consume_inventory_publish_request() is False
