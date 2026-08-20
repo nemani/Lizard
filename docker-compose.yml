@@ -1,0 +1,70 @@
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "${LIZARD_MQTT_PUBLISHED_PORT:-1883}:1883"
+    volumes:
+      - ./deploy/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+
+  nest:
+    build:
+      context: .
+      target: nest
+    restart: unless-stopped
+    depends_on:
+      - mqtt
+    environment:
+      LIZARD_MQTT_HOST: mqtt
+      LIZARD_MQTT_PORT: "1883"
+      LIZARD_DATA_DIR: /data
+      LIZARD_LISTEN_PORT: "8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+
+  egg:
+    build:
+      context: .
+      target: egg
+    profiles:
+      - egg
+    restart: unless-stopped
+    depends_on:
+      - mqtt
+    environment:
+      LIZARD_MQTT_HOST: mqtt
+      LIZARD_MQTT_PORT: "1883"
+      LIZARD_INTERVAL_SECONDS: "15"
+      LIZARD_CPU_PERCENT_THRESHOLDS: '[{"level":"warning","value":50},{"level":"critical","value":90}]'
+    volumes:
+      - /:/host:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  egg-test:
+    build:
+      context: .
+      target: egg
+    profiles:
+      - test-hosts
+    restart: unless-stopped
+    depends_on:
+      - mqtt
+    environment:
+      LIZARD_MQTT_HOST: mqtt
+      LIZARD_MQTT_PORT: "1883"
+      LIZARD_INTERVAL_SECONDS: "5"
+      LIZARD_CPU_PERCENT_THRESHOLDS: '[{"level":"warning","value":1},{"level":"critical","value":90}]'
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
