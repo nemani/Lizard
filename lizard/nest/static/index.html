@@ -305,6 +305,13 @@
       overflow-wrap: anywhere;
     }
 
+    .app-status {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
     .alert-list {
       display: flex;
       flex-direction: column;
@@ -368,6 +375,7 @@
     <div>
       <h1>🦎 Lizard Nest</h1>
       <div class="muted small" id="summary">Loading servers...</div>
+      <div class="app-status" id="app-status"></div>
     </div>
     <div class="row">
       <button class="secondary" id="refresh">Refresh</button>
@@ -563,21 +571,25 @@
     }, 15000);
 
     async function refreshAll() {
-      const [servers, statuses, inventories] = await Promise.all([
-        getJson("/servers"),
-        getJson("/servers/status"),
-        getJson("/servers/inventory")
-      ]);
-      state.servers = servers;
-      state.statuses = new Map(statuses.map((status) => [status.host_id, status]));
-      state.inventories = new Map(inventories.map((inventory) => [inventory.host_id, inventory]));
-      if (!state.selectedHostId && servers.length) state.selectedHostId = servers[0].host_id;
-      if (state.selectedHostId && !servers.find((server) => server.host_id === state.selectedHostId)) {
-        state.selectedHostId = servers[0]?.host_id || null;
+      try {
+        const [servers, statuses, inventories] = await Promise.all([
+          getJson("/servers"),
+          getJson("/servers/status"),
+          getJson("/servers/inventory")
+        ]);
+        state.servers = servers;
+        state.statuses = new Map(statuses.map((status) => [status.host_id, status]));
+        state.inventories = new Map(inventories.map((inventory) => [inventory.host_id, inventory]));
+        if (!state.selectedHostId && servers.length) state.selectedHostId = servers[0].host_id;
+        if (state.selectedHostId && !servers.find((server) => server.host_id === state.selectedHostId)) {
+          state.selectedHostId = servers[0]?.host_id || null;
+        }
+        renderHosts();
+        renderSelected();
+        await loadSeries();
+      } catch (error) {
+        setUiStatus(`Refresh failed: ${error.message}`, true);
       }
-      renderHosts();
-      renderSelected();
-      await loadSeries();
     }
 
     function toggleAutoRefresh() {
@@ -765,8 +777,13 @@
     async function refreshInventory() {
       const hostId = state.selectedHostId;
       if (!hostId) return;
-      await fetch(`/servers/${encodeURIComponent(hostId)}/inventory/refresh`, {method: "POST"}).then(checkResponse);
-      setTimeout(refreshAll, 1500);
+      try {
+        await fetch(`/servers/${encodeURIComponent(hostId)}/inventory/refresh`, {method: "POST"}).then(checkResponse);
+        setUiStatus("Inventory refresh requested.");
+        setTimeout(refreshAll, 1500);
+      } catch (error) {
+        setUiStatus(`Inventory refresh failed: ${error.message}`, true);
+      }
     }
 
     async function loadSeries() {
@@ -775,15 +792,21 @@
         drawEmptyCharts();
         return;
       }
-      const limit = $("series-limit").value;
-      const rows = await getJson(`/servers/${encodeURIComponent(hostId)}/series?limit=${limit}`);
-      drawChart("chart-cpu", rows.map((row) => [row.timestamp, row.cpu.overall_percent]), "#0b6b57");
-      drawMultiChart("chart-cpu-cores", buildCoreSeries(rows), [
-        "#0b6b57", "#315f9f", "#af6a00", "#7b3f98", "#b3261e", "#137333", "#5f6368", "#00838f"
-      ]);
-      drawChart("chart-memory", rows.map((row) => [row.timestamp, row.memory.percent]), "#315f9f");
-      drawChart("chart-gpu", rows.map((row) => [row.timestamp, avg(row.gpus.map((gpu) => gpu.utilization_percent).filter((value) => value !== null))]), "#7b3f98");
-      drawChart("chart-disk", rows.map((row) => [row.timestamp, max(row.disks.map((disk) => disk.percent))]), "#af6a00");
+      try {
+        const limit = $("series-limit").value;
+        const rows = await getJson(`/servers/${encodeURIComponent(hostId)}/series?limit=${limit}`);
+        drawChart("chart-cpu", rows.map((row) => [row.timestamp, row.cpu.overall_percent]), "#0b6b57");
+        drawMultiChart("chart-cpu-cores", buildCoreSeries(rows), [
+          "#0b6b57", "#315f9f", "#af6a00", "#7b3f98", "#b3261e", "#137333", "#5f6368", "#00838f"
+        ]);
+        drawChart("chart-memory", rows.map((row) => [row.timestamp, row.memory.percent]), "#315f9f");
+        drawChart("chart-gpu", rows.map((row) => [row.timestamp, avg(row.gpus.map((gpu) => gpu.utilization_percent).filter((value) => value !== null))]), "#7b3f98");
+        drawChart("chart-disk", rows.map((row) => [row.timestamp, max(row.disks.map((disk) => disk.percent))]), "#af6a00");
+        setUiStatus("");
+      } catch (error) {
+        drawEmptyCharts();
+        setUiStatus(`Series load failed: ${error.message}`, true);
+      }
     }
 
     async function loadSelectedConfig() {
@@ -791,10 +814,14 @@
       const path = scope === "global"
         ? "/config/global"
         : `/servers/${encodeURIComponent(scope.replace("host:", ""))}/config`;
-      const envelope = await getJson(path);
-      fillConfigForm(envelope ? envelope.config : {});
-      const version = envelope ? ` version ${envelope.version}` : "";
-      setStatus(`Loaded ${scope}${version}.`);
+      try {
+        const envelope = await getJson(path);
+        fillConfigForm(envelope ? envelope.config : {});
+        const version = envelope ? ` version ${envelope.version}` : "";
+        setStatus(`Loaded ${scope}${version}.`);
+      } catch (error) {
+        setStatus(`Load failed: ${error.message}`, true);
+      }
     }
 
     async function saveConfig() {
@@ -809,13 +836,17 @@
       const path = scope === "global"
         ? "/config/global"
         : `/servers/${encodeURIComponent(scope.replace("host:", ""))}/config`;
-      const response = await fetch(path, {
-        method: "POST",
-        headers: {"content-type": "application/json"},
-        body: JSON.stringify(payload)
-      }).then(checkResponse);
-      const envelope = await response.json();
-      setStatus(`Published retained config for ${scope} version ${envelope.version}.`);
+      try {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: {"content-type": "application/json"},
+          body: JSON.stringify(payload)
+        }).then(checkResponse);
+        const envelope = await response.json();
+        setStatus(`Published retained config for ${scope} version ${envelope.version}.`);
+      } catch (error) {
+        setStatus(`Publish failed: ${error.message}`, true);
+      }
     }
 
     function buildConfigJson() {
@@ -1018,6 +1049,12 @@
 
     function setStatus(message, isError = false) {
       const target = $("config-status");
+      target.textContent = message;
+      target.style.color = isError ? "var(--critical)" : "var(--muted)";
+    }
+
+    function setUiStatus(message, isError = false) {
+      const target = $("app-status");
       target.textContent = message;
       target.style.color = isError ? "var(--critical)" : "var(--muted)";
     }
