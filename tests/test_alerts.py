@@ -91,6 +91,27 @@ def test_disk_collection_dedupes_by_device(monkeypatch) -> None:
     ]
 
 
+def test_cpu_collection_reads_overall_and_per_core_after_one_sleep(monkeypatch) -> None:
+    calls = []
+
+    def fake_cpu_percent(interval=None, percpu=False):
+        calls.append((interval, percpu))
+        return [10.0, 20.0] if percpu else 15.0
+
+    monkeypatch.setattr(collector.time, "sleep", lambda seconds: calls.append(("sleep", seconds)))
+    monkeypatch.setattr(collector.psutil, "cpu_percent", fake_cpu_percent)
+
+    cpu = collector._collect_cpu()
+
+    assert cpu.overall_percent == 15.0
+    assert cpu.per_core_percent == [10.0, 20.0]
+    assert calls == [
+        ("sleep", 1),
+        (None, False),
+        (None, True),
+    ]
+
+
 def test_nvidia_smi_fallback_treats_bracketed_na_as_missing(monkeypatch) -> None:
     monkeypatch.setattr(
         collector.subprocess,

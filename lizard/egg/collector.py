@@ -4,6 +4,7 @@ import logging
 import platform
 import socket
 import subprocess
+import time
 from datetime import datetime, timezone
 
 import psutil
@@ -21,6 +22,11 @@ from lizard.common.models import (
 from lizard.egg.config import EggSettings
 
 LOGGER = logging.getLogger(__name__)
+
+
+def prime_cpu_counters() -> None:
+    psutil.cpu_percent(interval=None)
+    psutil.cpu_percent(interval=None, percpu=True)
 
 
 def collect_metrics(settings: EggSettings, agent_started_at: datetime | None = None) -> MetricsEnvelope:
@@ -52,8 +58,9 @@ def collect_metrics(settings: EggSettings, agent_started_at: datetime | None = N
 
 
 def _collect_cpu() -> CpuMetrics:
+    time.sleep(1)
     return CpuMetrics(
-        overall_percent=psutil.cpu_percent(interval=1),
+        overall_percent=psutil.cpu_percent(interval=None),
         per_core_percent=psutil.cpu_percent(interval=None, percpu=True),
     )
 

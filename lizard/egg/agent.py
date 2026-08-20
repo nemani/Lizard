@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from lizard.common.models import ConfigAck, ConfigEnvelope
 from lizard.common.mqtt import MqttSettings, build_client, publish_json, publish_text
-from lizard.egg.collector import collect_metrics
+from lizard.egg.collector import collect_metrics, prime_cpu_counters
 from lizard.egg.config import EggSettings
 from lizard.egg.inventory import collect_inventory
 
@@ -118,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     settings = EggSettings()
     agent_started_at = datetime.now(timezone.utc)
     state = RuntimeState(settings)
+    prime_cpu_counters()
     mqtt_settings = MqttSettings(
         host=settings.mqtt_host,
         port=settings.mqtt_port,
