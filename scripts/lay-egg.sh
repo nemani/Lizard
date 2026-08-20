@@ -42,7 +42,10 @@ LIZARD_INTERVAL_SECONDS='${INTERVAL_SECONDS}'
 LIZARD_CPU_PERCENT_THRESHOLDS='${CPU_PERCENT_THRESHOLDS}'
 EOF
 
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}" /etc/lizard
+chown -R "${SERVICE_USER}:${SERVICE_USER}" "${INSTALL_DIR}"
+chown root:"${SERVICE_USER}" /etc/lizard "${CONFIG_FILE}"
+chmod 750 /etc/lizard
+chmod 640 "${CONFIG_FILE}"
 
 cat > /etc/systemd/system/lizard-egg.service <<EOF
 [Unit]
