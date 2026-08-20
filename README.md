@@ -9,6 +9,15 @@
 - `mqtt`: Eclipse Mosquitto broker used for transport.
 - `scripts/lay-egg.sh`: installer that lays an egg by installing `lizard-egg` as a systemd service.
 
+## Assumptions
+
+- Edge devices run Ubuntu 22.04 with NVIDIA GPUs, matching the target A4000-style deployment environment.
+- 🥚 Eggs can reach the MQTT broker over a trusted private network, VPN, or equivalent controlled network path.
+- The core edge agent is headless and does not require UI dependencies; the Nest UI, Prometheus, Grafana, and Docker Compose stack run centrally or in development.
+- Docker is used for the Nest stack and test hosts. Production eggs are installed directly on Linux hosts with systemd so they can see host CPU, memory, disk, temperature, and GPU state clearly.
+- MQTT broker connection settings are local machine configuration. Runtime alert thresholds and sample intervals can be changed remotely through retained config messages.
+- AWS IoT Core and Greengrass are not implemented in this prototype.
+
 ## Run the Nest
 
 ```bash
@@ -92,13 +101,13 @@ All settings use the `LIZARD_` environment prefix.
 
 Alerts are logged locally by the egg and included in the MQTT payload.
 
-Thresholds are ordered lists, so one metric can emit multiple alerts. For example:
+Thresholds are ordered lists, so one metric can support multiple severity levels. The egg reports the highest crossed threshold for each metric to keep local logs and payloads readable. For example:
 
 ```bash
 LIZARD_CPU_PERCENT_THRESHOLDS='[{"level":"warning","value":50},{"level":"critical","value":90}]'
 ```
 
-If CPU is `95%`, the egg emits both the `warning` and `critical` CPU alerts.
+If CPU is `95%`, the egg emits the `critical` CPU alert rather than both `warning` and `critical`.
 
 ## Pushing Config Changes
 
@@ -220,3 +229,16 @@ docker compose --profile test-hosts up -d --build --scale egg-test=3 egg-test
 ```
 
 These publish to the same MQTT/Nest path and are useful for end-to-end UI, config, heartbeat, and Prometheus testing.
+
+## Known Limitations
+
+- The local Nest JSONL history store is intentionally simple and grows until cleaned up. Prometheus/Grafana is the preferred path for longer-term metric retention.
+- MQTT auth/TLS is not enabled in the demo Mosquitto configuration. Production should add per-device credentials or mTLS, topic ACLs, and rotation.
+- The Nest UI and config API do not include authentication, authorization, CSRF protection, or audit logging yet.
+- Docker test eggs are useful for end-to-end development, but they do not prove NVIDIA GPU collection. GPU validation should be run on an Ubuntu GPU host with NVML or `nvidia-smi`.
+- The egg applies remote config in memory. Broker host, broker credentials, and other bootstrap settings remain local environment/systemd configuration.
+- MQTT reconnect behavior relies on the MQTT client loop and should be hardened for production with explicit reconnect/backoff policies and richer connection state reporting.
+
+## LLM Assistance
+
+LLM-powered coding assistance was used to accelerate scaffolding, implementation iteration, documentation drafting, and review. Architecture choices, tradeoff decisions, and final verification were kept explicit in the repo through tests, Docker smoke checks, README notes, and this design documentation.
