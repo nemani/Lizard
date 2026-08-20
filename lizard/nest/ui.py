@@ -561,9 +561,10 @@ INDEX_HTML = r"""<!doctype html>
       const path = scope === "global"
         ? "/config/global"
         : `/servers/${encodeURIComponent(scope.replace("host:", ""))}/config`;
-      const config = await getJson(path);
-      fillConfigForm(config);
-      setStatus(`Loaded ${scope} config.`);
+      const envelope = await getJson(path);
+      fillConfigForm(envelope ? envelope.config : {});
+      const version = envelope ? ` version ${envelope.version}` : "";
+      setStatus(`Loaded ${scope}${version}.`);
     }
 
     async function saveConfig() {
@@ -578,12 +579,13 @@ INDEX_HTML = r"""<!doctype html>
       const path = scope === "global"
         ? "/config/global"
         : `/servers/${encodeURIComponent(scope.replace("host:", ""))}/config`;
-      await fetch(path, {
+      const response = await fetch(path, {
         method: "POST",
         headers: {"content-type": "application/json"},
         body: JSON.stringify(payload)
       }).then(checkResponse);
-      setStatus(`Published retained config for ${scope}.`);
+      const envelope = await response.json();
+      setStatus(`Published retained config for ${scope} version ${envelope.version}.`);
     }
 
     function buildConfigJson() {

@@ -11,6 +11,7 @@ import time
 import paho.mqtt.client as mqtt
 from pydantic import ValidationError
 
+from lizard.common.models import ConfigAck, ConfigEnvelope
 from lizard.common.mqtt import MqttSettings, build_client, publish_json
 from lizard.egg.collector import collect_metrics
 from lizard.egg.config import EggSettings
@@ -22,26 +23,71 @@ SHUTDOWN = False
 class RuntimeState:
     def __init__(self, settings: EggSettings) -> None:
         self._lock = threading.Lock()
+        self._base_settings = settings
         self._settings = settings
+        self._global_config: ConfigEnvelope | None = None
+        self._host_config: ConfigEnvelope | None = None
 
     def get_settings(self) -> EggSettings:
         with self._lock:
             return self._settings
 
-    def apply_remote_config(self, topic: str, payload: bytes) -> None:
+    def apply_remote_config(self, topic: str, payload: bytes) -> ConfigAck:
         try:
             decoded = json.loads(payload.decode("utf-8"))
             if not isinstance(decoded, dict):
                 raise TypeError("config payload must be a JSON object")
+            envelope = ConfigEnvelope.model_validate(decoded)
             with self._lock:
-                updated = self._settings.with_remote_update(decoded)
+                if envelope.scope == "global":
+                    self._global_config = envelope
+                elif envelope.scope == f"host:{self._base_settings.host_id}":
+                    self._host_config = envelope
+                else:
+                    raise ValueError(f"config scope {envelope.scope!r} does not match this egg")
+                active = self._active_config()
+                self._settings = (
+                    self._base_settings.with_alert_config(active.config)
+                    if active is not None
+                    else self._base_settings
+                )
         except (json.JSONDecodeError, TypeError, UnicodeDecodeError, ValidationError):
             LOGGER.exception("discarding invalid remote config from %s", topic)
-            return
+            return self._config_ack("unknown", 0, "rejected", "invalid config payload")
+        except ValueError as exc:
+            LOGGER.warning("discarding remote config from %s: %s", topic, exc)
+            return self._config_ack("unknown", 0, "rejected", str(exc))
 
         with self._lock:
-            self._settings = updated
-        LOGGER.info("applied remote config from %s", topic)
+            active = self._active_config()
+            status = "applied" if active == envelope else "stored"
+            ack = self._config_ack(envelope.scope, envelope.version, status, "config received")
+        LOGGER.info(
+            "%s remote config from %s scope=%s version=%s active=%s:%s",
+            status,
+            topic,
+            envelope.scope,
+            envelope.version,
+            ack.active_scope,
+            ack.active_version,
+        )
+        return ack
+
+    def _active_config(self) -> ConfigEnvelope | None:
+        return self._host_config or self._global_config
+
+    def _config_ack(self, scope: str, version: int, status: str, message: str) -> ConfigAck:
+        active = self._active_config()
+        return ConfigAck(
+            host_id=self._base_settings.host_id,
+            hostname=self._base_settings.hostname,
+            scope=scope,
+            version=version,
+            active_scope=active.scope if active is not None else "local",
+            active_version=active.version if active is not None else 0,
+            status=status,
+            message=message,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -69,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     client = build_client(f"lizard-egg-{settings.host_id}", mqtt_settings)
     if settings.remote_config_enabled:
         client.on_connect = _build_on_connect(settings)
-        client.on_message = _build_on_message(state)
+        client.on_message = _build_on_message(state, settings)
     client.connect(mqtt_settings.host, mqtt_settings.port, keepalive=60)
     client.loop_start()
 
@@ -123,9 +169,12 @@ def _build_on_connect(settings: EggSettings):
     return on_connect
 
 
-def _build_on_message(state: RuntimeState):
-    def on_message(_mqtt_client: mqtt.Client, _userdata: object, message: mqtt.MQTTMessage) -> None:
-        state.apply_remote_config(message.topic, message.payload)
+def _build_on_message(state: RuntimeState, settings: EggSettings):
+    def on_message(mqtt_client: mqtt.Client, _userdata: object, message: mqtt.MQTTMessage) -> None:
+        ack = state.apply_remote_config(message.topic, message.payload)
+        topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/config/status"
+        payload = ack.model_dump_json()
+        mqtt_client.publish(topic, payload, qos=1, retain=True)
 
     return on_message
 

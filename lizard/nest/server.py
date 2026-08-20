@@ -11,7 +11,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
-from lizard.common.models import AlertConfig, MetricsEnvelope
+from lizard.common.models import AlertConfig, ConfigAck, ConfigEnvelope, MetricsEnvelope
 from lizard.common.mqtt import MqttSettings, build_client
 from lizard.nest.config import NestSettings
 from lizard.nest.config_store import ConfigStore
@@ -97,33 +97,36 @@ def server_series(host_id: str, limit: int = 240) -> list[MetricsEnvelope]:
 
 
 @app.get("/config")
-def configs() -> dict[str, AlertConfig]:
+def configs() -> dict[str, ConfigEnvelope]:
     return config_store.all()
 
 
 @app.get("/config/global")
-def global_config() -> AlertConfig:
-    return config_store.get("global") or AlertConfig()
+def global_config() -> ConfigEnvelope | None:
+    return config_store.get("global")
 
 
 @app.post("/config/global")
-def set_global_config(config: AlertConfig) -> dict[str, str]:
-    _publish_config("global", f"{settings.mqtt_topic_prefix}/config/global", config)
-    return {"status": "ok", "scope": "global"}
+def set_global_config(config: AlertConfig) -> ConfigEnvelope:
+    return _publish_config("global", f"{settings.mqtt_topic_prefix}/config/global", config)
 
 
 @app.get("/servers/{host_id}/config")
-def host_config(host_id: str) -> AlertConfig:
-    return config_store.get(f"host:{host_id}") or AlertConfig()
+def host_config(host_id: str) -> ConfigEnvelope | None:
+    return config_store.get(f"host:{host_id}")
 
 
 @app.post("/servers/{host_id}/config")
-def set_host_config(host_id: str, config: AlertConfig) -> dict[str, str]:
+def set_host_config(host_id: str, config: AlertConfig) -> ConfigEnvelope:
     if store.get(host_id) is None:
         raise HTTPException(status_code=404, detail="unknown host_id")
     topic = f"{settings.mqtt_topic_prefix}/servers/{host_id}/config"
-    _publish_config(f"host:{host_id}", topic, config)
-    return {"status": "ok", "scope": f"host:{host_id}"}
+    return _publish_config(f"host:{host_id}", topic, config)
+
+
+@app.get("/config/acks")
+def config_acks() -> dict[str, ConfigAck]:
+    return config_store.acks()
 
 
 def _on_connect(
@@ -136,12 +139,19 @@ def _on_connect(
     if reason_code.is_failure:
         LOGGER.error("MQTT connection failed: %s", reason_code)
         return
-    topic = f"{settings.mqtt_topic_prefix}/servers/+/metrics"
-    mqtt_client.subscribe(topic, qos=1)
-    LOGGER.info("subscribed to %s", topic)
+    topics = [
+        (f"{settings.mqtt_topic_prefix}/servers/+/metrics", 1),
+        (f"{settings.mqtt_topic_prefix}/servers/+/config/status", 1),
+    ]
+    mqtt_client.subscribe(topics)
+    LOGGER.info("subscribed to nest topics")
 
 
 def _on_message(_mqtt_client: mqtt.Client, _userdata: object, message: mqtt.MQTTMessage) -> None:
+    if message.topic.endswith("/config/status"):
+        _on_config_status(message)
+        return
+
     try:
         payload = json.loads(message.payload.decode("utf-8"))
         envelope = MetricsEnvelope.model_validate(payload)
@@ -158,17 +168,36 @@ def _on_message(_mqtt_client: mqtt.Client, _userdata: object, message: mqtt.MQTT
     )
 
 
-def _publish_config(scope: str, topic: str, config: AlertConfig) -> None:
+def _on_config_status(message: mqtt.MQTTMessage) -> None:
+    try:
+        payload = json.loads(message.payload.decode("utf-8"))
+        ack = ConfigAck.model_validate(payload)
+    except Exception:
+        LOGGER.exception("discarding invalid config status from %s", message.topic)
+        return
+
+    config_store.put_ack(ack)
+    LOGGER.info(
+        "stored config ack host_id=%s status=%s active=%s:%s",
+        ack.host_id,
+        ack.status,
+        ack.active_scope,
+        ack.active_version,
+    )
+
+
+def _publish_config(scope: str, topic: str, config: AlertConfig) -> ConfigEnvelope:
     if client is None:
         raise HTTPException(status_code=503, detail="MQTT client is not connected")
 
-    config_store.put(scope, config)
-    payload = config.model_dump_json(exclude_none=True)
+    envelope = config_store.next_envelope(scope, config)
+    payload = envelope.model_dump_json(exclude_none=True)
     result = client.publish(topic, payload, qos=1, retain=True)
     result.wait_for_publish(timeout=10)
     if result.rc != mqtt.MQTT_ERR_SUCCESS:
         raise HTTPException(status_code=502, detail=f"failed to publish MQTT config: rc={result.rc}")
-    LOGGER.info("published retained config scope=%s topic=%s", scope, topic)
+    LOGGER.info("published retained config scope=%s version=%s topic=%s", scope, envelope.version, topic)
+    return envelope
 
 
 def main() -> int:

@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from lizard.common.models import AlertThreshold
+from lizard.common.models import AlertConfig, AlertThreshold
 
 
 class EggSettings(BaseSettings):
@@ -56,3 +56,6 @@ class EggSettings(BaseSettings):
         current = self.model_dump()
         current.update(updates)
         return type(self).model_validate(current)
+
+    def with_alert_config(self, config: AlertConfig) -> EggSettings:
+        return self.with_remote_update(config.model_dump(exclude_none=True, mode="json"))

@@ -20,6 +20,25 @@ class AlertConfig(BaseModel):
     temperature_celsius_thresholds: list[AlertThreshold] | None = None
 
 
+class ConfigEnvelope(BaseModel):
+    scope: str
+    version: int = Field(ge=1)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    config: AlertConfig
+
+
+class ConfigAck(BaseModel):
+    host_id: str
+    hostname: str
+    scope: str
+    version: int
+    active_scope: str
+    active_version: int
+    status: str
+    message: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class CpuMetrics(BaseModel):
     overall_percent: float
     per_core_percent: list[float]
