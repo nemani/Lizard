@@ -9,7 +9,7 @@ from lizard.common.models import HostInventory, HostStatus, MetricsEnvelope
 
 class MetricsStore:
     def __init__(self, data_dir: Path) -> None:
-        self._data_dir = data_dir
+        self._data_dir = data_dir.resolve()
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._latest: dict[str, MetricsEnvelope] = {}
@@ -18,7 +18,7 @@ class MetricsStore:
     def put(self, envelope: MetricsEnvelope) -> None:
         with self._lock:
             self._latest[envelope.host_id] = envelope
-            path = self._data_dir / f"{envelope.host_id}.jsonl"
+            path = self._host_path(envelope.host_id, ".jsonl")
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(envelope.model_dump_json() + "\n")
 
@@ -55,7 +55,7 @@ class MetricsStore:
     def put_inventory(self, inventory: HostInventory) -> None:
         with self._lock:
             self._inventory[inventory.host_id] = inventory
-            path = self._data_dir / f"{inventory.host_id}.inventory.json"
+            path = self._host_path(inventory.host_id, ".inventory.json")
             path.write_text(inventory.model_dump_json(indent=2), encoding="utf-8")
 
     def inventory(self, host_id: str) -> HostInventory | None:
@@ -67,7 +67,7 @@ class MetricsStore:
             return sorted(self._inventory.values(), key=lambda item: item.host_id)
 
     def history(self, host_id: str, limit: int = 240) -> list[MetricsEnvelope]:
-        path = self._data_dir / f"{host_id}.jsonl"
+        path = self._host_path(host_id, ".jsonl")
         if not path.exists():
             return []
 
@@ -84,6 +84,12 @@ class MetricsStore:
         for path in self._data_dir.glob("*.inventory.json"):
             inventory = HostInventory.model_validate_json(path.read_text(encoding="utf-8"))
             self._inventory[inventory.host_id] = inventory
+
+    def _host_path(self, host_id: str, suffix: str) -> Path:
+        path = (self._data_dir / f"{host_id}{suffix}").resolve()
+        if path.parent != self._data_dir:
+            raise ValueError(f"host_id escapes data directory: {host_id!r}")
+        return path
 
 
 def _read_last_line(path: Path) -> str | None:

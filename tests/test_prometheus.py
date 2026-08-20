@@ -6,8 +6,8 @@ from lizard.nest.prometheus import render_prometheus_metrics
 
 def test_render_prometheus_metrics_includes_core_metrics_and_status() -> None:
     envelope = MetricsEnvelope(
-        host_id='gpu-"01',
-        hostname="gpu-01",
+        host_id="gpu-01",
+        hostname='gpu-"01',
         uptime_seconds=42,
         cpu=CpuMetrics(overall_percent=12.5, per_core_percent=[12.5]),
         memory=MemoryMetrics(total_bytes=100, used_bytes=50, available_bytes=50, percent=50),
@@ -26,8 +26,8 @@ def test_render_prometheus_metrics_includes_core_metrics_and_status() -> None:
         gpus=[],
     )
     status = HostStatus(
-        host_id='gpu-"01',
-        hostname="gpu-01",
+        host_id="gpu-01",
+        hostname='gpu-"01',
         last_seen=datetime.now(timezone.utc),
         age_seconds=3,
         state="online",
@@ -38,8 +38,8 @@ def test_render_prometheus_metrics_includes_core_metrics_and_status() -> None:
 
     rendered = render_prometheus_metrics([envelope], [status])
 
-    assert 'lizard_cpu_percent{host_id="gpu-\\"01",hostname="gpu-01"} 12.5' in rendered
-    assert 'lizard_cpu_core_percent{host_id="gpu-\\"01",hostname="gpu-01",core="0"} 12.5' in rendered
-    assert 'lizard_disk_percent{host_id="gpu-\\"01",hostname="gpu-01",mountpoint="/",device="/dev/sda1"} 40.0' in rendered
-    assert 'lizard_agent_uptime_seconds{host_id="gpu-\\"01",hostname="gpu-01"} 42' in rendered
-    assert 'lizard_host_status{host_id="gpu-\\"01",hostname="gpu-01",state="online"} 1' in rendered
+    assert 'lizard_cpu_percent{host_id="gpu-01",hostname="gpu-\\"01"} 12.5' in rendered
+    assert 'lizard_cpu_core_percent{host_id="gpu-01",hostname="gpu-\\"01",core="0"} 12.5' in rendered
+    assert 'lizard_disk_percent{host_id="gpu-01",hostname="gpu-\\"01",mountpoint="/",device="/dev/sda1"} 40.0' in rendered
+    assert 'lizard_agent_uptime_seconds{host_id="gpu-01",hostname="gpu-\\"01"} 42' in rendered
+    assert 'lizard_host_status{host_id="gpu-01",hostname="gpu-\\"01",state="online"} 1' in rendered

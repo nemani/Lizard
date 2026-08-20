@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+from pydantic import ValidationError
+
 from lizard.common.models import CpuMetrics, HostInventory, MemoryMetrics, MetricsEnvelope
 from lizard.nest.store import MetricsStore
 
@@ -86,3 +89,15 @@ def test_store_persists_host_inventory(tmp_path) -> None:
 
     assert reloaded.inventory("gpu-01") is not None
     assert reloaded.inventory("gpu-01").cpu_logical_count == 16
+
+
+def test_metrics_envelope_rejects_host_id_path_traversal() -> None:
+    with pytest.raises(ValidationError):
+        _envelope("../config/authorized_keys", 10)
+
+
+def test_store_host_path_stays_inside_data_dir(tmp_path) -> None:
+    store = MetricsStore(tmp_path)
+
+    with pytest.raises(ValueError):
+        store._host_path("../config/authorized_keys", ".jsonl")

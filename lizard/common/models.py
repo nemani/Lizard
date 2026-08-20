@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+HOST_ID_PATTERN = r"^[A-Za-z0-9._-]{1,64}$"
+
 
 class AlertThreshold(BaseModel):
     level: str = "warning"
@@ -28,7 +30,7 @@ class ConfigEnvelope(BaseModel):
 
 
 class ConfigAck(BaseModel):
-    host_id: str
+    host_id: str = Field(pattern=HOST_ID_PATTERN)
     hostname: str
     scope: str
     version: int
@@ -52,7 +54,7 @@ class GpuInventory(BaseModel):
 
 
 class HostInventory(BaseModel):
-    host_id: str
+    host_id: str = Field(pattern=HOST_ID_PATTERN)
     hostname: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     os: str
@@ -118,7 +120,7 @@ class Alert(BaseModel):
 
 
 class MetricsEnvelope(BaseModel):
-    host_id: str
+    host_id: str = Field(pattern=HOST_ID_PATTERN)
     hostname: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     uptime_seconds: float | None = None
@@ -132,7 +134,7 @@ class MetricsEnvelope(BaseModel):
 
 
 class HostStatus(BaseModel):
-    host_id: str
+    host_id: str = Field(pattern=HOST_ID_PATTERN)
     hostname: str
     last_seen: datetime
     age_seconds: float = Field(ge=0)
