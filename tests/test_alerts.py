@@ -31,6 +31,26 @@ def test_cpu_emits_highest_crossed_threshold_only() -> None:
     ]
 
 
+def test_alert_selection_prefers_severity_over_threshold_value() -> None:
+    settings = EggSettings(
+        mqtt_host="broker",
+        cpu_percent_thresholds=[
+            AlertThreshold(level="warning", value=95),
+            AlertThreshold(level="critical", value=90),
+        ],
+    )
+    alerts = _evaluate_alerts(
+        settings,
+        CpuMetrics(overall_percent=96.0, per_core_percent=[96.0]),
+        MemoryMetrics(total_bytes=10, used_bytes=5, available_bytes=5, percent=50),
+        [],
+        [],
+        [],
+    )
+
+    assert [(alert.level, alert.threshold) for alert in alerts] == [("critical", 90)]
+
+
 def test_alerts_include_disk_and_gpu_thresholds() -> None:
     settings = EggSettings(
         mqtt_host="broker",

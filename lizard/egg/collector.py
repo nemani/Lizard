@@ -22,6 +22,11 @@ from lizard.common.models import (
 from lizard.egg.config import EggSettings
 
 LOGGER = logging.getLogger(__name__)
+SEVERITY_RANK = {
+    "info": 0,
+    "warning": 1,
+    "critical": 2,
+}
 
 
 def prime_cpu_counters() -> None:
@@ -284,7 +289,11 @@ def _append_threshold_alerts(
     crossed = [threshold for threshold in thresholds if value > threshold.value]
     if not crossed:
         return
-    _append_alert(alerts, metric, value, max(crossed, key=lambda item: item.value))
+    _append_alert(alerts, metric, value, max(crossed, key=_threshold_rank))
+
+
+def _threshold_rank(threshold: AlertThreshold) -> tuple[int, float]:
+    return (SEVERITY_RANK.get(threshold.level.lower(), -1), threshold.value)
 
 
 def _append_alert(alerts: list[Alert], metric: str, value: float, threshold: AlertThreshold) -> None:
