@@ -16,6 +16,7 @@
 - The core edge agent is headless and does not require UI dependencies; the Nest UI, Prometheus, Grafana, and Docker Compose stack run centrally or in development.
 - Docker is used for the Nest stack and test hosts. Production eggs are installed directly on Linux hosts with systemd so they can see host CPU, memory, disk, temperature, and GPU state clearly.
 - MQTT broker connection settings are local machine configuration. Runtime alert thresholds and sample intervals can be changed remotely through retained config messages.
+- Egg `host_id` values must match `[A-Za-z0-9._-]{1,64}` because they are used in MQTT topics, API paths, Prometheus labels, and local Nest storage filenames.
 - AWS IoT Core and Greengrass are not implemented in this prototype.
 
 ## Run the Nest

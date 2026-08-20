@@ -13,6 +13,8 @@
 
 MQTT is used because edge devices are often behind client firewalls/NAT and push telemetry is simpler than scraping each device. Nest owns config versions and publishes retained config envelopes. 🥚 Eggs subscribe to global and host-specific config topics, apply host config over global config as full-replacement precedence, and publish config ack/status with the active version.
 
+Egg identities are intentionally constrained to `[A-Za-z0-9._-]{1,64}`. That keeps host IDs safe to use across MQTT topics, URL paths, Prometheus labels, and Nest's local prototype storage.
+
 Prometheus scrapes Nest's `/metrics` endpoint for long-term metric querying and Grafana dashboards. Grafana includes fleet-level and per-host dashboards. Nest still stores JSONL samples and host inventory for the prototype UI and API; in production this JSONL path would be removed or treated as short-lived local cache.
 
 🥚 Eggs publish host inventory on startup, after config changes, and when Nest requests a refresh. Inventory captures OS/kernel, architecture, CPU counts, memory size, disks, and GPUs without resending it on every metrics sample.

@@ -6,13 +6,13 @@ from typing import Any
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from lizard.common.models import AlertConfig, AlertThreshold
+from lizard.common.models import HOST_ID_PATTERN, AlertConfig, AlertThreshold
 
 
 class EggSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LIZARD_", env_file=".env", extra="ignore")
 
-    host_id: str = Field(default_factory=socket.gethostname)
+    host_id: str = Field(default_factory=socket.gethostname, pattern=HOST_ID_PATTERN)
     hostname: str = Field(default_factory=socket.gethostname)
     interval_seconds: int = Field(default=15, ge=1)
 

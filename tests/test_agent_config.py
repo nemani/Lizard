@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from lizard.common.models import AlertConfig, ConfigEnvelope
 from lizard.egg.agent import RuntimeState
 from lizard.egg.config import EggSettings
@@ -55,3 +58,8 @@ def test_global_config_is_stored_but_not_applied_when_host_config_exists() -> No
     assert ack.status == "stored"
     assert ack.active_scope == "host:gpu-01"
     assert state.get_settings().interval_seconds == 5
+
+
+def test_egg_settings_rejects_invalid_host_id_at_startup() -> None:
+    with pytest.raises(ValidationError):
+        EggSettings(host_id="../gpu-01", hostname="gpu-01")
