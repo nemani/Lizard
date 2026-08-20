@@ -24,7 +24,7 @@ from lizard.nest.config import NestSettings
 from lizard.nest.config_store import ConfigStore
 from lizard.nest.prometheus import render_prometheus_metrics
 from lizard.nest.store import MetricsStore
-from lizard.nest.ui import INDEX_HTML
+from lizard.nest.ui import index_html
 
 LOGGER = logging.getLogger(__name__)
 settings = NestSettings()
@@ -81,7 +81,7 @@ def health() -> dict[str, str]:
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard() -> str:
-    return INDEX_HTML
+    return index_html()
 
 
 @app.get("/servers")
