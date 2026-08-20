@@ -12,17 +12,19 @@ Lizard monitors Ubuntu 22.04 Linux servers with GPUs. Each monitored server runs
 ## Run the Nest
 
 ```bash
-docker compose up --build mqtt nest
+docker compose up --build mqtt nest prometheus grafana
 ```
 
-The Nest UI and API listen on `http://localhost:8000`.
+The Nest UI and API listen on `http://localhost:8000`. Prometheus listens on `http://localhost:9090`, and Grafana listens on `http://localhost:3000` with `admin` / `lizard` for local demo use.
 
 ```bash
 open http://localhost:8000
 curl http://localhost:8000/health
 curl http://localhost:8000/servers
+curl http://localhost:8000/servers/status
 curl http://localhost:8000/servers/<host_id>
 curl http://localhost:8000/servers/<host_id>/series?limit=240
+curl http://localhost:8000/metrics
 ```
 
 ## Run an Egg Locally
@@ -96,37 +98,43 @@ Eggs subscribe to two retained MQTT config topics:
 - `lizard/config/global`
 - `lizard/servers/<host_id>/config`
 
-Use retained messages so config survives egg restarts. Global config applies to every egg; host-specific config applies only to one server.
+Use retained messages so config survives egg restarts. Nest owns config versions, timestamps, and publishing. Host-specific config takes precedence over global config as a full replacement: if a host config exists, the egg applies that host config instead of the global config.
 
-Global example:
+Global MQTT envelope example:
 
 ```bash
 mosquitto_pub -h <broker-host> -r -t lizard/config/global -m '{
-  "interval_seconds": 10,
-  "cpu_percent_thresholds": [
-    {"level": "warning", "value": 50},
-    {"level": "critical", "value": 90}
-  ],
-  "memory_percent_thresholds": [
-    {"level": "warning", "value": 90},
-    {"level": "critical", "value": 98}
-  ]
+  "scope": "global",
+  "version": 1,
+  "updated_at": "2026-08-20T18:00:00Z",
+  "config": {
+    "interval_seconds": 10,
+    "cpu_percent_thresholds": [
+      {"level": "warning", "value": 50},
+      {"level": "critical", "value": 90}
+    ]
+  }
 }'
 ```
 
-Host-specific override:
+Host-specific MQTT envelope example:
 
 ```bash
 mosquitto_pub -h <broker-host> -r -t lizard/servers/gpu-01/config -m '{
-  "interval_seconds": 5,
-  "gpu_percent_thresholds": [
-    {"level": "warning", "value": 80},
-    {"level": "critical", "value": 95}
-  ]
+  "scope": "host:gpu-01",
+  "version": 1,
+  "updated_at": "2026-08-20T18:00:00Z",
+  "config": {
+    "interval_seconds": 5,
+    "gpu_percent_thresholds": [
+      {"level": "warning", "value": 80},
+      {"level": "critical", "value": 95}
+    ]
+  }
 }'
 ```
 
-Remote updates are applied in memory. On restart, the egg reads local `/etc/lizard/egg.env`, then receives the broker's retained config again. Keep broker connection settings local because changing MQTT host/credentials over the same MQTT connection is intentionally not supported.
+Remote updates are applied in memory. On restart, the egg reads local `/etc/lizard/egg.env`, then receives the broker's retained config again. Keep broker connection settings local because changing MQTT host/credentials over the same MQTT connection is intentionally not supported. Eggs publish ack/status to `lizard/servers/<host_id>/config/status`.
 
 Nest also exposes this as an API and publishes retained MQTT messages for you.
 
@@ -157,12 +165,12 @@ curl -X POST http://localhost:8000/servers/gpu-01/config \
   }'
 ```
 
-The dashboard at `/` uses the same endpoints. It shows latest egg status, CPU/RAM/GPU/disk time-series charts, latest alerts, and a form for publishing global or per-host local alert config.
+The dashboard at `/` uses the same endpoints. It shows latest egg status, heartbeat state, uptime, last seen age, CPU/RAM/GPU/disk time-series charts, latest alerts, and a form for publishing global or per-host local alert config.
 
 ## Deployment Strategy
 
-1. Run `docker compose up -d --build mqtt nest` on the Nest host.
-2. Restrict broker access at the network layer or replace the example anonymous Mosquitto config with username/password or TLS before exposing it outside a trusted LAN/VPN.
+1. Run `docker compose up -d --build mqtt nest prometheus grafana` on the Nest host.
+2. Restrict broker access at the network layer. MQTT auth/TLS is omitted from the prototype, but production should use username/password or mTLS plus topic ACLs before exposing it outside a trusted LAN/VPN.
 3. Build a release archive from the repo, or clone it on each GPU server.
 4. Install on each Ubuntu 22.04 server with `scripts/lay-egg.sh`, passing the Nest/broker host and desired interval.
 5. Validate each egg with `systemctl status lizard-egg` and confirm it appears in `GET /servers`.
@@ -177,5 +185,16 @@ This design scales in layers:
 - MQTT handles fan-in well because eggs publish small periodic JSON messages and Nest subscribes by topic wildcard.
 - Increase `LIZARD_INTERVAL_SECONDS` for larger fleets, or shard by topic prefix such as `lizard/prod-a` and `lizard/prod-b`.
 - Run Mosquitto on the same private network/VPN as the GPU hosts; use auth/TLS before crossing untrusted networks.
-- The current Nest JSONL store is simple and good for early operation. For larger fleets or long retention, replace `MetricsStore` with TimescaleDB, ClickHouse, VictoriaMetrics, or Prometheus remote-write style storage.
+- Prometheus scrapes Nest's `/metrics` endpoint for long-term querying and Grafana dashboards. For very large fleets or long retention, pair Prometheus with Mimir, Thanos, VictoriaMetrics, or another remote-write backend.
+- The current Nest JSONL store is simple and good for the product UI prototype. For larger fleets, treat it as a cache or replace it with a database-backed API.
 - Run more than one Nest subscriber if you need separate consumers, such as API storage, alert routing, and dashboards. MQTT lets those consumers subscribe independently without changing the eggs.
+
+## Test Hosts
+
+On a non-GPU development machine, run simulated CPU-only eggs:
+
+```bash
+docker compose --profile test-hosts up -d --build --scale egg-test=3 egg-test
+```
+
+These publish to the same MQTT/Nest path and are useful for end-to-end UI, config, heartbeat, and Prometheus testing.
