@@ -12,7 +12,14 @@ import paho.mqtt.client as mqtt
 from pydantic import ValidationError
 
 from lizard.common.models import ConfigAck, ConfigEnvelope
-from lizard.common.mqtt import MqttSettings, build_client, publish_json, publish_text
+from lizard.common.mqtt import (
+    MqttSettings,
+    build_client,
+    publish_json,
+    publish_text,
+    track_connection,
+    wait_for_mqtt_connection,
+)
 from lizard.egg.collector import collect_metrics, prime_cpu_counters
 from lizard.egg.config import EggSettings
 from lizard.egg.inventory import collect_inventory
@@ -151,11 +158,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     client = build_client(f"lizard-egg-{settings.host_id}", mqtt_settings)
     if settings.remote_config_enabled:
-        client.on_connect = _build_on_connect(settings)
+        mqtt_connected = track_connection(client, _build_on_connect(settings, state))
         client.on_message = _build_on_message(state, settings)
+    else:
+        mqtt_connected = track_connection(client)
     client.connect_async(mqtt_settings.host, mqtt_settings.port, keepalive=60)
     client.loop_start()
-    _publish_inventory(client, settings)
+    try:
+        wait_for_mqtt_connection(mqtt_connected, f"{settings.mqtt_host}:{settings.mqtt_port}")
+        _publish_inventory(client, settings)
+        state.consume_inventory_publish_request()
+    except TimeoutError as exc:
+        LOGGER.warning("skipping startup inventory publish: %s", exc)
 
     LOGGER.info(
         "started lizard egg host_id=%s mqtt=%s:%s interval=%ss",
@@ -190,7 +204,7 @@ def _handle_shutdown(signum: int, _frame: object) -> None:
     SHUTDOWN.set()
 
 
-def _build_on_connect(settings: EggSettings):
+def _build_on_connect(settings: EggSettings, state: RuntimeState):
     def on_connect(
         mqtt_client: mqtt.Client,
         _userdata: object,
@@ -207,6 +221,7 @@ def _build_on_connect(settings: EggSettings):
             (f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/inventory/refresh", 1),
         ]
         mqtt_client.subscribe(topics)
+        state.request_inventory_publish()
         LOGGER.info("subscribed to remote config and inventory topics")
 
     return on_connect

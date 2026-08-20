@@ -1,7 +1,7 @@
 import pytest
 from paho.mqtt import client as mqtt
 
-from lizard.common.mqtt import wait_for_publish_success
+from lizard.common.mqtt import track_connection, wait_for_mqtt_connection, wait_for_publish_success
 
 
 class FakePublishResult:
@@ -15,6 +15,17 @@ class FakePublishResult:
 
     def is_published(self) -> bool:
         return self._published
+
+
+class FakeReasonCode:
+    def __init__(self, is_failure: bool = False) -> None:
+        self.is_failure = is_failure
+
+
+class FakeClient:
+    def __init__(self) -> None:
+        self.on_connect = None
+        self.on_disconnect = None
 
 
 def test_wait_for_publish_success_accepts_published_result() -> None:
@@ -37,3 +48,33 @@ def test_wait_for_publish_success_rejects_timeout_without_publish() -> None:
 
     with pytest.raises(TimeoutError):
         wait_for_publish_success(result, "lizard/test", timeout=0.01)
+
+
+def test_track_connection_sets_clears_and_delegates_callbacks() -> None:
+    client = FakeClient()
+    calls: list[str] = []
+
+    connected = track_connection(
+        client,
+        on_connect=lambda *_args: calls.append("connect"),
+        on_disconnect=lambda *_args: calls.append("disconnect"),
+    )
+
+    client.on_connect(client, None, None, FakeReasonCode(), None)
+    assert connected.is_set()
+    assert calls == ["connect"]
+
+    client.on_disconnect(client, None, None, FakeReasonCode())
+    assert not connected.is_set()
+    assert calls == ["connect", "disconnect"]
+
+    client.on_connect(client, None, None, FakeReasonCode(is_failure=True), None)
+    assert not connected.is_set()
+    assert calls == ["connect", "disconnect", "connect"]
+
+
+def test_wait_for_mqtt_connection_rejects_timeout() -> None:
+    connected = track_connection(FakeClient())
+
+    with pytest.raises(TimeoutError):
+        wait_for_mqtt_connection(connected, "mqtt:1883", timeout=0.01)

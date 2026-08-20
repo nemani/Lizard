@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -19,7 +20,13 @@ from lizard.common.models import (
     HostStatus,
     MetricsEnvelope,
 )
-from lizard.common.mqtt import MqttSettings, build_client, publish_text
+from lizard.common.mqtt import (
+    MqttSettings,
+    build_client,
+    publish_text,
+    track_connection,
+    wait_for_mqtt_connection,
+)
 from lizard.nest.config import NestSettings
 from lizard.nest.config_store import ConfigStore
 from lizard.nest.prometheus import render_prometheus_metrics
@@ -31,6 +38,7 @@ settings = NestSettings()
 store = MetricsStore(settings.data_dir)
 config_store = ConfigStore(settings.data_dir)
 client: mqtt.Client | None = None
+mqtt_connected: threading.Event | None = None
 
 
 @asynccontextmanager
@@ -46,7 +54,7 @@ app = FastAPI(title="Lizard Nest", version="0.1.0", lifespan=lifespan)
 
 
 def startup() -> None:
-    global client
+    global client, mqtt_connected
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -61,7 +69,7 @@ def startup() -> None:
         tls=settings.mqtt_tls,
     )
     client = build_client("lizard-nest", mqtt_settings)
-    client.on_connect = _on_connect
+    mqtt_connected = track_connection(client, _on_connect)
     client.on_message = _on_message
     client.connect_async(mqtt_settings.host, mqtt_settings.port, keepalive=60)
     client.loop_start()
@@ -130,14 +138,13 @@ def server_inventory(host_id: str) -> HostInventory:
 
 @app.post("/servers/{host_id}/inventory/refresh")
 def refresh_server_inventory(host_id: str) -> dict[str, str]:
-    if client is None:
-        raise HTTPException(status_code=503, detail="MQTT client is not connected")
+    mqtt_client = _require_mqtt_client()
     if store.get(host_id) is None:
         raise HTTPException(status_code=404, detail="unknown host_id")
 
     topic = f"{settings.mqtt_topic_prefix}/servers/{host_id}/inventory/refresh"
     try:
-        publish_text(client, topic, "{}", qos=1)
+        publish_text(mqtt_client, topic, "{}", qos=1)
     except (RuntimeError, TimeoutError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"status": "ok", "host_id": host_id}
@@ -173,14 +180,13 @@ def set_host_config(host_id: str, config: AlertConfig) -> ConfigEnvelope:
 
 @app.delete("/servers/{host_id}/config")
 def delete_host_config(host_id: str) -> dict[str, str | bool]:
-    if client is None:
-        raise HTTPException(status_code=503, detail="MQTT client is not connected")
+    mqtt_client = _require_mqtt_client()
     if store.get(host_id) is None:
         raise HTTPException(status_code=404, detail="unknown host_id")
 
     topic = f"{settings.mqtt_topic_prefix}/servers/{host_id}/config"
     try:
-        publish_text(client, topic, "", qos=1, retain=True)
+        publish_text(mqtt_client, topic, "", qos=1, retain=True)
     except (RuntimeError, TimeoutError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     deleted = config_store.delete(f"host:{host_id}")
@@ -272,17 +278,26 @@ def _on_config_status(message: mqtt.MQTTMessage) -> None:
 
 
 def _publish_config(scope: str, topic: str, config: AlertConfig) -> ConfigEnvelope:
-    if client is None:
-        raise HTTPException(status_code=503, detail="MQTT client is not connected")
+    mqtt_client = _require_mqtt_client()
 
     envelope = config_store.next_envelope(scope, config)
     payload = envelope.model_dump_json(exclude_none=True)
     try:
-        publish_text(client, topic, payload, qos=1, retain=True)
+        publish_text(mqtt_client, topic, payload, qos=1, retain=True)
     except (RuntimeError, TimeoutError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     LOGGER.info("published retained config scope=%s version=%s topic=%s", scope, envelope.version, topic)
     return envelope
+
+
+def _require_mqtt_client() -> mqtt.Client:
+    if client is None or mqtt_connected is None:
+        raise HTTPException(status_code=503, detail="MQTT client is not connected")
+    try:
+        wait_for_mqtt_connection(mqtt_connected, f"{settings.mqtt_host}:{settings.mqtt_port}")
+    except TimeoutError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return client
 
 
 def main() -> int:
