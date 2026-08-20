@@ -39,6 +39,35 @@ class ConfigAck(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class DiskInventory(BaseModel):
+    device: str
+    mountpoint: str
+    fstype: str
+
+
+class GpuInventory(BaseModel):
+    index: int
+    name: str
+    memory_total_bytes: int | None = None
+
+
+class HostInventory(BaseModel):
+    host_id: str
+    hostname: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    os: str
+    os_version: str
+    kernel: str
+    architecture: str
+    python_version: str
+    cpu_logical_count: int
+    cpu_physical_count: int | None = None
+    memory_total_bytes: int
+    disks: list[DiskInventory]
+    gpus: list[GpuInventory]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class CpuMetrics(BaseModel):
     overall_percent: float
     per_core_percent: list[float]

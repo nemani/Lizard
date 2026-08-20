@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from lizard.common.models import CpuMetrics, MemoryMetrics, MetricsEnvelope
+from lizard.common.models import CpuMetrics, HostInventory, MemoryMetrics, MetricsEnvelope
 from lizard.nest.store import MetricsStore
 
 
@@ -61,3 +61,28 @@ def test_store_reports_host_status_from_latest_heartbeat(tmp_path) -> None:
         ("gpu-02", "stale", 123),
         ("gpu-03", "offline", 123),
     ]
+
+
+def test_store_persists_host_inventory(tmp_path) -> None:
+    store = MetricsStore(tmp_path)
+    store.put_inventory(
+        HostInventory(
+            host_id="gpu-01",
+            hostname="gpu-01",
+            os="Linux",
+            os_version="Ubuntu 22.04",
+            kernel="6.8.0",
+            architecture="x86_64",
+            python_version="3.12",
+            cpu_logical_count=16,
+            memory_total_bytes=100,
+            disks=[],
+            gpus=[],
+        )
+    )
+
+    reloaded = MetricsStore(tmp_path)
+    reloaded.load_existing_latest()
+
+    assert reloaded.inventory("gpu-01") is not None
+    assert reloaded.inventory("gpu-01").cpu_logical_count == 16

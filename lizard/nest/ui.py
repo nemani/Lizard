@@ -78,6 +78,31 @@ INDEX_HTML = r"""<!doctype html>
       margin: 0 auto;
     }
 
+    .tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 18px 0;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .tab {
+      background: #fff;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+
+    .tab.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: #075545;
+    }
+
+    body[data-tab="monitor"] .config-panel,
+    body[data-tab="config"] .monitor-panel {
+      display: none;
+    }
+
     .sidebar, .content {
       display: flex;
       flex-direction: column;
@@ -266,6 +291,31 @@ INDEX_HTML = r"""<!doctype html>
       gap: 8px;
     }
 
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(260px, 1fr));
+      gap: 14px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 7px 6px;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
     .alert {
       border-left: 4px solid var(--warn);
       padding: 8px 10px;
@@ -296,7 +346,7 @@ INDEX_HTML = r"""<!doctype html>
 <body>
   <header>
     <div>
-      <h1>Lizard Nest</h1>
+      <h1>🦎 Lizard Nest</h1>
       <div class="muted small" id="summary">Loading servers...</div>
     </div>
     <div class="row">
@@ -305,17 +355,22 @@ INDEX_HTML = r"""<!doctype html>
     </div>
   </header>
 
+  <nav class="tabs">
+    <button class="tab active" id="tab-monitor" data-tab-target="monitor">Monitor</button>
+    <button class="tab" id="tab-config" data-tab-target="config">🥚 Config</button>
+  </nav>
+
   <main>
     <aside class="sidebar">
       <section class="section">
         <div class="section-head">
-          <h2>Eggs</h2>
+          <h2>🥚 Eggs</h2>
           <span class="muted small" id="host-count">0</span>
         </div>
         <div class="section-body host-list" id="hosts"></div>
       </section>
 
-      <section class="section">
+      <section class="section config-panel">
         <div class="section-head">
           <h2>Config Scope</h2>
         </div>
@@ -334,7 +389,7 @@ INDEX_HTML = r"""<!doctype html>
     </aside>
 
     <section class="content">
-      <section class="section">
+      <section class="section monitor-panel">
         <div class="section-head">
           <div>
             <h2 id="selected-title">No egg selected</h2>
@@ -347,7 +402,7 @@ INDEX_HTML = r"""<!doctype html>
         </div>
       </section>
 
-      <section class="section">
+      <section class="section monitor-panel">
         <div class="section-head">
           <h2>Time Series</h2>
           <div class="row">
@@ -370,9 +425,34 @@ INDEX_HTML = r"""<!doctype html>
         </div>
       </section>
 
-      <section class="section">
+      <section class="section monitor-panel">
         <div class="section-head">
-          <h2>Local Alert Config</h2>
+          <h2>Host Details</h2>
+          <button class="secondary" id="refresh-inventory">Refresh inventory</button>
+        </div>
+        <div class="section-body detail-grid">
+          <div>
+            <h3>Per-Core CPU</h3>
+            <div id="cpu-cores"></div>
+          </div>
+          <div>
+            <h3>Per-Disk Usage</h3>
+            <div id="disk-details"></div>
+          </div>
+          <div>
+            <h3>Inventory</h3>
+            <div id="inventory-details" class="small"></div>
+          </div>
+          <div>
+            <h3>GPUs</h3>
+            <div id="gpu-details"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section config-panel">
+        <div class="section-head">
+          <h2>🥚 Local Alert Config</h2>
           <div class="status" id="config-status"></div>
         </div>
         <div class="section-body">
@@ -413,7 +493,7 @@ INDEX_HTML = r"""<!doctype html>
         </div>
       </section>
 
-      <section class="section">
+      <section class="section monitor-panel">
         <div class="section-head"><h2>Latest Alerts</h2></div>
         <div class="section-body alert-list" id="alerts"></div>
       </section>
@@ -424,6 +504,7 @@ INDEX_HTML = r"""<!doctype html>
     const state = {
       servers: [],
       statuses: new Map(),
+      inventories: new Map(),
       selectedHostId: null,
       autoRefresh: true,
       timer: null
@@ -433,24 +514,30 @@ INDEX_HTML = r"""<!doctype html>
 
     $("refresh").addEventListener("click", refreshAll);
     $("auto").addEventListener("click", toggleAutoRefresh);
+    $("tab-monitor").addEventListener("click", () => setTab("monitor"));
+    $("tab-config").addEventListener("click", () => setTab("config"));
     $("series-limit").addEventListener("change", loadSeries);
     $("load-config").addEventListener("click", loadSelectedConfig);
     $("build-json").addEventListener("click", buildConfigJson);
     $("save-config").addEventListener("click", saveConfig);
     $("config-scope").addEventListener("change", loadSelectedConfig);
+    $("refresh-inventory").addEventListener("click", refreshInventory);
 
+    document.body.dataset.tab = "monitor";
     refreshAll();
     state.timer = setInterval(() => {
       if (state.autoRefresh) refreshAll();
     }, 15000);
 
     async function refreshAll() {
-      const [servers, statuses] = await Promise.all([
+      const [servers, statuses, inventories] = await Promise.all([
         getJson("/servers"),
-        getJson("/servers/status")
+        getJson("/servers/status"),
+        getJson("/servers/inventory")
       ]);
       state.servers = servers;
       state.statuses = new Map(statuses.map((status) => [status.host_id, status]));
+      state.inventories = new Map(inventories.map((inventory) => [inventory.host_id, inventory]));
       if (!state.selectedHostId && servers.length) state.selectedHostId = servers[0].host_id;
       if (state.selectedHostId && !servers.find((server) => server.host_id === state.selectedHostId)) {
         state.selectedHostId = servers[0]?.host_id || null;
@@ -463,6 +550,13 @@ INDEX_HTML = r"""<!doctype html>
     function toggleAutoRefresh() {
       state.autoRefresh = !state.autoRefresh;
       $("auto").textContent = `Auto refresh: ${state.autoRefresh ? "on" : "off"}`;
+    }
+
+    function setTab(tab) {
+      document.body.dataset.tab = tab;
+      document.querySelectorAll(".tab").forEach((button) => {
+        button.classList.toggle("active", button.dataset.tabTarget === tab);
+      });
     }
 
     function renderHosts() {
@@ -516,6 +610,10 @@ INDEX_HTML = r"""<!doctype html>
         $("selected-health").textContent = "idle";
         $("latest-metrics").innerHTML = "";
         $("alerts").innerHTML = "";
+        $("cpu-cores").innerHTML = "";
+        $("disk-details").innerHTML = "";
+        $("inventory-details").innerHTML = "";
+        $("gpu-details").innerHTML = "";
         return;
       }
 
@@ -536,6 +634,7 @@ INDEX_HTML = r"""<!doctype html>
         ${metricTile("Uptime", formatDuration(server.uptime_seconds))}
         ${metricTile("Last seen", formatAge(status?.age_seconds))}
       `;
+      renderDetails(server);
 
       const alerts = $("alerts");
       alerts.innerHTML = "";
@@ -549,6 +648,51 @@ INDEX_HTML = r"""<!doctype html>
         item.innerHTML = `<strong>${escapeHtml(alert.level)}</strong> ${escapeHtml(alert.message)}`;
         alerts.appendChild(item);
       });
+    }
+
+    function renderDetails(server) {
+      const inventory = state.inventories.get(server.host_id);
+      $("cpu-cores").innerHTML = table(
+        ["Core", "Usage"],
+        server.cpu.per_core_percent.map((value, index) => [index, formatPercent(value)])
+      );
+      $("disk-details").innerHTML = table(
+        ["Mount", "Device", "Used", "Free", "Usage"],
+        server.disks.map((disk) => [
+          disk.mountpoint,
+          disk.device,
+          formatBytes(disk.used_bytes),
+          formatBytes(disk.free_bytes),
+          formatPercent(disk.percent)
+        ])
+      );
+      $("gpu-details").innerHTML = table(
+        ["GPU", "Name", "Usage", "Memory", "Temp"],
+        server.gpus.map((gpu) => [
+          gpu.index,
+          gpu.name,
+          gpu.utilization_percent == null ? "n/a" : formatPercent(gpu.utilization_percent),
+          gpu.memory_percent == null ? "n/a" : formatPercent(gpu.memory_percent),
+          gpu.temperature_celsius == null ? "n/a" : `${gpu.temperature_celsius.toFixed(1)} C`
+        ])
+      );
+      $("inventory-details").innerHTML = inventory ? `
+        <div><strong>OS:</strong> ${escapeHtml(inventory.os)} ${escapeHtml(inventory.os_version)}</div>
+        <div><strong>Kernel:</strong> ${escapeHtml(inventory.kernel)}</div>
+        <div><strong>Architecture:</strong> ${escapeHtml(inventory.architecture)}</div>
+        <div><strong>CPU:</strong> ${inventory.cpu_logical_count} logical / ${inventory.cpu_physical_count ?? "n/a"} physical</div>
+        <div><strong>Memory:</strong> ${formatBytes(inventory.memory_total_bytes)}</div>
+        <div><strong>Disks:</strong> ${inventory.disks.length}</div>
+        <div><strong>GPUs:</strong> ${inventory.gpus.length}</div>
+        <div><strong>Inventory updated:</strong> ${formatTime(inventory.timestamp)}</div>
+      ` : `<div class="muted">No inventory yet.</div>`;
+    }
+
+    async function refreshInventory() {
+      const hostId = state.selectedHostId;
+      if (!hostId) return;
+      await fetch(`/servers/${encodeURIComponent(hostId)}/inventory/refresh`, {method: "POST"}).then(checkResponse);
+      setTimeout(refreshAll, 1500);
     }
 
     async function loadSeries() {
@@ -649,6 +793,16 @@ INDEX_HTML = r"""<!doctype html>
       return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
     }
 
+    function table(headers, rows) {
+      if (!rows.length) return `<div class="muted small">No data.</div>`;
+      return `
+        <table>
+          <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+          <tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody>
+        </table>
+      `;
+    }
+
     function drawEmptyCharts() {
       ["chart-cpu", "chart-memory", "chart-gpu", "chart-disk"].forEach((id) => drawChart(id, [], "#0b6b57"));
     }
@@ -742,6 +896,18 @@ INDEX_HTML = r"""<!doctype html>
       const hours = Math.floor(whole / 3600);
       const minutes = Math.floor((whole % 3600) / 60);
       return `${hours}h ${minutes}m`;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === undefined || bytes === null) return "n/a";
+      const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+      let value = Number(bytes);
+      let index = 0;
+      while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index += 1;
+      }
+      return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
     }
 
     function statusClass(status, fallback) {

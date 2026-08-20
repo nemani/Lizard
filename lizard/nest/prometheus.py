@@ -16,6 +16,11 @@ def render_prometheus_metrics(
     for envelope in envelopes:
         labels = _host_labels(envelope)
         lines.append(f"lizard_cpu_percent{labels} {envelope.cpu.overall_percent}")
+        for core_index, core_percent in enumerate(envelope.cpu.per_core_percent):
+            lines.append(
+                f'lizard_cpu_core_percent{_labels(host_id=envelope.host_id, hostname=envelope.hostname, core=str(core_index))} '
+                f"{core_percent}"
+            )
         lines.append(f"lizard_memory_percent{labels} {envelope.memory.percent}")
         lines.append(f"lizard_memory_used_bytes{labels} {envelope.memory.used_bytes}")
         if envelope.uptime_seconds is not None:
@@ -30,11 +35,18 @@ def render_prometheus_metrics(
             )
 
         for disk in envelope.disks:
-            lines.append(
-                "lizard_disk_percent"
-                f"{_labels(host_id=envelope.host_id, hostname=envelope.hostname, mountpoint=disk.mountpoint, device=disk.device)} "
-                f"{disk.percent}"
+            disk_labels = _labels(
+                host_id=envelope.host_id,
+                hostname=envelope.hostname,
+                mountpoint=disk.mountpoint,
+                device=disk.device,
             )
+            lines.append(
+                f"lizard_disk_percent{disk_labels} {disk.percent}"
+            )
+            lines.append(f"lizard_disk_total_bytes{disk_labels} {disk.total_bytes}")
+            lines.append(f"lizard_disk_used_bytes{disk_labels} {disk.used_bytes}")
+            lines.append(f"lizard_disk_free_bytes{disk_labels} {disk.free_bytes}")
         for gpu in envelope.gpus:
             gpu_labels = _labels(
                 host_id=envelope.host_id,

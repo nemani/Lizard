@@ -1,0 +1,89 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [
+        {"expr": "lizard_cpu_percent{host_id=\"$host_id\"}", "legendFormat": "overall"},
+        {"expr": "lizard_cpu_core_percent{host_id=\"$host_id\"}", "legendFormat": "core {{core}}"}
+      ],
+      "title": "CPU Percent",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "targets": [
+        {"expr": "lizard_disk_percent{host_id=\"$host_id\"}", "legendFormat": "{{mountpoint}} {{device}}"}
+      ],
+      "title": "Per-Disk Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "targets": [
+        {"expr": "lizard_gpu_utilization_percent{host_id=\"$host_id\"}", "legendFormat": "GPU {{gpu_index}} utilization"},
+        {"expr": "lizard_gpu_memory_percent{host_id=\"$host_id\"}", "legendFormat": "GPU {{gpu_index}} memory"}
+      ],
+      "title": "GPU Percent",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 4,
+      "targets": [
+        {"expr": "lizard_host_last_seen_age_seconds{host_id=\"$host_id\"}", "legendFormat": "age"}
+      ],
+      "title": "Last Seen Age",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 40,
+  "tags": ["lizard"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "definition": "label_values(lizard_cpu_percent, host_id)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Host",
+        "multi": false,
+        "name": "host_id",
+        "options": [],
+        "query": {"query": "label_values(lizard_cpu_percent, host_id)", "refId": "StandardVariableQuery"},
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {"from": "now-30m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Lizard Host Detail",
+  "uid": "lizard-host-detail",
+  "version": 1,
+  "weekStart": ""
+}

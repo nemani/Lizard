@@ -11,7 +11,14 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
-from lizard.common.models import AlertConfig, ConfigAck, ConfigEnvelope, HostStatus, MetricsEnvelope
+from lizard.common.models import (
+    AlertConfig,
+    ConfigAck,
+    ConfigEnvelope,
+    HostInventory,
+    HostStatus,
+    MetricsEnvelope,
+)
 from lizard.common.mqtt import MqttSettings, build_client
 from lizard.nest.config import NestSettings
 from lizard.nest.config_store import ConfigStore
@@ -87,6 +94,11 @@ def server_statuses() -> list[HostStatus]:
     return store.statuses(settings.host_stale_seconds, settings.host_offline_seconds)
 
 
+@app.get("/servers/inventory")
+def server_inventories() -> list[HostInventory]:
+    return store.inventories()
+
+
 @app.get("/metrics", response_class=PlainTextResponse)
 def prometheus_metrics() -> str:
     statuses = store.statuses(settings.host_stale_seconds, settings.host_offline_seconds)
@@ -106,6 +118,29 @@ def server_series(host_id: str, limit: int = 240) -> list[MetricsEnvelope]:
     if store.get(host_id) is None:
         raise HTTPException(status_code=404, detail="unknown host_id")
     return store.history(host_id, limit=min(limit, 2000))
+
+
+@app.get("/servers/{host_id}/inventory")
+def server_inventory(host_id: str) -> HostInventory:
+    inventory = store.inventory(host_id)
+    if inventory is None:
+        raise HTTPException(status_code=404, detail="unknown host inventory")
+    return inventory
+
+
+@app.post("/servers/{host_id}/inventory/refresh")
+def refresh_server_inventory(host_id: str) -> dict[str, str]:
+    if client is None:
+        raise HTTPException(status_code=503, detail="MQTT client is not connected")
+    if store.get(host_id) is None:
+        raise HTTPException(status_code=404, detail="unknown host_id")
+
+    topic = f"{settings.mqtt_topic_prefix}/servers/{host_id}/inventory/refresh"
+    result = client.publish(topic, "{}", qos=1)
+    result.wait_for_publish(timeout=10)
+    if result.rc != mqtt.MQTT_ERR_SUCCESS:
+        raise HTTPException(status_code=502, detail=f"failed to publish inventory refresh: rc={result.rc}")
+    return {"status": "ok", "host_id": host_id}
 
 
 @app.get("/config")
@@ -154,6 +189,7 @@ def _on_connect(
     topics = [
         (f"{settings.mqtt_topic_prefix}/servers/+/metrics", 1),
         (f"{settings.mqtt_topic_prefix}/servers/+/config/status", 1),
+        (f"{settings.mqtt_topic_prefix}/servers/+/inventory", 1),
     ]
     mqtt_client.subscribe(topics)
     LOGGER.info("subscribed to nest topics")
@@ -162,6 +198,9 @@ def _on_connect(
 def _on_message(_mqtt_client: mqtt.Client, _userdata: object, message: mqtt.MQTTMessage) -> None:
     if message.topic.endswith("/config/status"):
         _on_config_status(message)
+        return
+    if message.topic.endswith("/inventory"):
+        _on_inventory(message)
         return
 
     try:
@@ -177,6 +216,23 @@ def _on_message(_mqtt_client: mqtt.Client, _userdata: object, message: mqtt.MQTT
         envelope.host_id,
         len(envelope.alerts),
         message.topic,
+    )
+
+
+def _on_inventory(message: mqtt.MQTTMessage) -> None:
+    try:
+        payload = json.loads(message.payload.decode("utf-8"))
+        inventory = HostInventory.model_validate(payload)
+    except Exception:
+        LOGGER.exception("discarding invalid inventory from %s", message.topic)
+        return
+
+    store.put_inventory(inventory)
+    LOGGER.info(
+        "stored inventory host_id=%s disks=%s gpus=%s",
+        inventory.host_id,
+        len(inventory.disks),
+        len(inventory.gpus),
     )
 
 

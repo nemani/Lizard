@@ -4,7 +4,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lizard.common.models import HostStatus, MetricsEnvelope
+from lizard.common.models import HostInventory, HostStatus, MetricsEnvelope
 
 
 class MetricsStore:
@@ -13,6 +13,7 @@ class MetricsStore:
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._latest: dict[str, MetricsEnvelope] = {}
+        self._inventory: dict[str, HostInventory] = {}
 
     def put(self, envelope: MetricsEnvelope) -> None:
         with self._lock:
@@ -51,6 +52,20 @@ class MetricsStore:
         with self._lock:
             return self._latest.get(host_id)
 
+    def put_inventory(self, inventory: HostInventory) -> None:
+        with self._lock:
+            self._inventory[inventory.host_id] = inventory
+            path = self._data_dir / f"{inventory.host_id}.inventory.json"
+            path.write_text(inventory.model_dump_json(indent=2), encoding="utf-8")
+
+    def inventory(self, host_id: str) -> HostInventory | None:
+        with self._lock:
+            return self._inventory.get(host_id)
+
+    def inventories(self) -> list[HostInventory]:
+        with self._lock:
+            return sorted(self._inventory.values(), key=lambda item: item.host_id)
+
     def history(self, host_id: str, limit: int = 240) -> list[MetricsEnvelope]:
         path = self._data_dir / f"{host_id}.jsonl"
         if not path.exists():
@@ -66,6 +81,9 @@ class MetricsStore:
                 continue
             envelope = MetricsEnvelope.model_validate_json(last_line)
             self._latest[envelope.host_id] = envelope
+        for path in self._data_dir.glob("*.inventory.json"):
+            inventory = HostInventory.model_validate_json(path.read_text(encoding="utf-8"))
+            self._inventory[inventory.host_id] = inventory
 
 
 def _read_last_line(path: Path) -> str | None:

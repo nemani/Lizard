@@ -16,6 +16,7 @@ from lizard.common.models import ConfigAck, ConfigEnvelope
 from lizard.common.mqtt import MqttSettings, build_client, publish_json
 from lizard.egg.collector import collect_metrics
 from lizard.egg.config import EggSettings
+from lizard.egg.inventory import collect_inventory
 
 LOGGER = logging.getLogger(__name__)
 SHUTDOWN = False
@@ -120,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         client.on_message = _build_on_message(state, settings)
     client.connect(mqtt_settings.host, mqtt_settings.port, keepalive=60)
     client.loop_start()
+    _publish_inventory(client, settings)
 
     LOGGER.info(
         "started lizard egg host_id=%s mqtt=%s:%s interval=%ss",
@@ -164,21 +166,38 @@ def _build_on_connect(settings: EggSettings):
         topics = [
             (f"{settings.mqtt_topic_prefix}/config/global", 1),
             (f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/config", 1),
+            (f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/inventory/refresh", 1),
         ]
         mqtt_client.subscribe(topics)
-        LOGGER.info("subscribed to remote config topics")
+        LOGGER.info("subscribed to remote config and inventory topics")
 
     return on_connect
 
 
 def _build_on_message(state: RuntimeState, settings: EggSettings):
     def on_message(mqtt_client: mqtt.Client, _userdata: object, message: mqtt.MQTTMessage) -> None:
+        if message.topic.endswith("/inventory/refresh"):
+            _publish_inventory(mqtt_client, settings)
+            return
+
         ack = state.apply_remote_config(message.topic, message.payload)
         topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/config/status"
         payload = ack.model_dump_json()
         mqtt_client.publish(topic, payload, qos=1, retain=True)
+        _publish_inventory(mqtt_client, state.get_settings())
 
     return on_message
+
+
+def _publish_inventory(mqtt_client: mqtt.Client, settings: EggSettings) -> None:
+    inventory = collect_inventory(settings)
+    topic = f"{settings.mqtt_topic_prefix}/servers/{settings.host_id}/inventory"
+    result = mqtt_client.publish(topic, inventory.model_dump_json(), qos=1, retain=True)
+    result.wait_for_publish(timeout=10)
+    if result.rc == mqtt.MQTT_ERR_SUCCESS:
+        LOGGER.info("published inventory to %s", topic)
+    else:
+        LOGGER.warning("failed to publish inventory to %s rc=%s", topic, result.rc)
 
 
 if __name__ == "__main__":
