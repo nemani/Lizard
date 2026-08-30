@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import signal
 import sys
 import threading
 from collections.abc import AsyncGenerator
@@ -35,7 +36,7 @@ from lizard.nest.ui import index_html
 
 LOGGER = logging.getLogger(__name__)
 settings = NestSettings()
-store = MetricsStore(settings.data_dir)
+store = MetricsStore(settings.data_dir, max_jsonl_lines=settings.max_jsonl_lines)
 config_store = ConfigStore(settings.data_dir)
 client: mqtt.Client | None = None
 mqtt_connected: threading.Event | None = None
@@ -48,6 +49,12 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
         yield
     finally:
         shutdown()
+
+
+def _handle_shutdown_signal(signum: int, _frame: object) -> None:
+    LOGGER.info("received signal %s; shutting down", signum)
+    shutdown()
+    sys.exit(0)
 
 
 app = FastAPI(title="Lizard Nest", version="0.1.0", lifespan=lifespan)
@@ -80,11 +87,18 @@ def shutdown() -> None:
     if client is not None:
         client.loop_stop()
         client.disconnect()
+        LOGGER.info("nest MQTT client disconnected")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def ready() -> dict[str, str | bool]:
+    mqtt_ok = mqtt_connected is not None and mqtt_connected.is_set()
+    return {"status": "ok" if mqtt_ok else "degraded", "mqtt_connected": mqtt_ok}
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -301,6 +315,8 @@ def _require_mqtt_client() -> mqtt.Client:
 
 
 def main() -> int:
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
     uvicorn.run(app, host=settings.listen_host, port=settings.listen_port)
     return 0
 

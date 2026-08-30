@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from lizard.common.models import (
     CpuMetrics,
     DiskMetrics,
+    GpuMetrics,
     HostStatus,
     MemoryMetrics,
     MetricsEnvelope,
@@ -53,6 +54,8 @@ def test_render_prometheus_metrics_includes_core_metrics_and_status() -> None:
     assert 'lizard_disk_percent{host_id="gpu-01",hostname="gpu-\\"01",mountpoint="/",device="/dev/sda1"} 40.0' in rendered
     assert 'lizard_agent_uptime_seconds{host_id="gpu-01",hostname="gpu-\\"01"} 42' in rendered
     assert 'lizard_host_status{host_id="gpu-01",hostname="gpu-\\"01",state="online"} 1' in rendered
+    assert 'lizard_memory_total_bytes{host_id="gpu-01",hostname="gpu-\\"01"} 100' in rendered
+    assert 'lizard_memory_available_bytes{host_id="gpu-01",hostname="gpu-\\"01"} 50' in rendered
     assert (
         'lizard_temperature_celsius{host_id="gpu-01",hostname="gpu-\\"01",sensor="acpitz",label="acpitz",entry="0"} 42.0'
         in rendered
@@ -61,3 +64,44 @@ def test_render_prometheus_metrics_includes_core_metrics_and_status() -> None:
         'lizard_temperature_celsius{host_id="gpu-01",hostname="gpu-\\"01",sensor="acpitz",label="acpitz",entry="1"} 44.0'
         in rendered
     )
+
+
+def test_render_prometheus_includes_gpu_metrics() -> None:
+    envelope = MetricsEnvelope(
+        host_id="gpu-01",
+        hostname="gpu-01",
+        cpu=CpuMetrics(overall_percent=10, per_core_percent=[10]),
+        memory=MemoryMetrics(total_bytes=100, used_bytes=50, available_bytes=50, percent=50),
+        disks=[],
+        temperatures=[],
+        gpus=[
+            GpuMetrics(
+                index=0,
+                name="A100",
+                utilization_percent=75.0,
+                memory_total_bytes=40_000_000_000,
+                memory_used_bytes=20_000_000_000,
+                memory_percent=50.0,
+                temperature_celsius=65.0,
+                power_watts=250.0,
+            )
+        ],
+    )
+    status = HostStatus(
+        host_id="gpu-01",
+        hostname="gpu-01",
+        last_seen=datetime.now(timezone.utc),
+        age_seconds=3,
+        state="online",
+        alert_count=0,
+        critical_alert_count=0,
+    )
+
+    rendered = render_prometheus_metrics([envelope], [status])
+
+    assert 'lizard_gpu_utilization_percent{host_id="gpu-01",hostname="gpu-01",gpu_index="0",gpu_name="A100"} 75.0' in rendered
+    assert 'lizard_gpu_memory_total_bytes{host_id="gpu-01",hostname="gpu-01",gpu_index="0",gpu_name="A100"} 40000000000' in rendered
+    assert 'lizard_gpu_memory_used_bytes{host_id="gpu-01",hostname="gpu-01",gpu_index="0",gpu_name="A100"} 20000000000' in rendered
+    assert 'lizard_gpu_memory_percent{host_id="gpu-01",hostname="gpu-01",gpu_index="0",gpu_name="A100"} 50.0' in rendered
+    assert 'lizard_gpu_temperature_celsius{host_id="gpu-01",hostname="gpu-01",gpu_index="0",gpu_name="A100"} 65.0' in rendered
+    assert 'lizard_gpu_power_watts{host_id="gpu-01",hostname="gpu-01",gpu_index="0",gpu_name="A100"} 250.0' in rendered

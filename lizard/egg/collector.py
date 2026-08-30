@@ -138,8 +138,10 @@ def _collect_gpus_with_nvml() -> list[GpuMetrics]:
     except ImportError:
         return []
 
+    nvml_initialized = False
     try:
         pynvml.nvmlInit()
+        nvml_initialized = True
         count = pynvml.nvmlDeviceGetCount()
         metrics: list[GpuMetrics] = []
         for index in range(count):
@@ -169,10 +171,11 @@ def _collect_gpus_with_nvml() -> list[GpuMetrics]:
         LOGGER.debug("NVML GPU collection failed: %s", exc)
         return []
     finally:
-        try:
-            pynvml.nvmlShutdown()
-        except pynvml.NVMLError as exc:
-            LOGGER.debug("NVML shutdown failed: %s", exc)
+        if nvml_initialized:
+            try:
+                pynvml.nvmlShutdown()
+            except pynvml.NVMLError as exc:
+                LOGGER.debug("NVML shutdown failed: %s", exc)
 
 
 def _collect_gpus_with_nvidia_smi() -> list[GpuMetrics]:

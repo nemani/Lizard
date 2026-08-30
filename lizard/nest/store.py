@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,12 +14,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 class MetricsStore:
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, max_jsonl_lines: int = 100_000) -> None:
         self._data_dir = data_dir.resolve()
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._latest: dict[str, MetricsEnvelope] = {}
         self._inventory: dict[str, HostInventory] = {}
+        self._max_jsonl_lines = max_jsonl_lines
 
     def put(self, envelope: MetricsEnvelope) -> None:
         with self._lock:
@@ -26,6 +28,7 @@ class MetricsStore:
             path = self._host_path(envelope.host_id, ".jsonl")
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(envelope.model_dump_json() + "\n")
+            self._rotate_if_needed(path)
 
     def latest(self) -> list[MetricsEnvelope]:
         with self._lock:
@@ -98,6 +101,31 @@ class MetricsStore:
         if path.parent != self._data_dir:
             raise ValueError(f"host_id escapes data directory: {host_id!r}")
         return path
+
+    def _rotate_if_needed(self, path: Path) -> None:
+        """Truncate the JSONL file to the most recent max_jsonl_lines if it exceeds the limit."""
+        if self._max_jsonl_lines <= 0:
+            return
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return
+        if size == 0:
+            return
+        tail = _read_tail_lines(path, self._max_jsonl_lines)
+        line_count = sum(1 for _ in path.open("r", encoding="utf-8"))
+        if line_count <= self._max_jsonl_lines:
+            return
+        LOGGER.info(
+            "rotating %s: %d lines exceeds max %d, keeping last %d lines",
+            path.name,
+            line_count,
+            self._max_jsonl_lines,
+            self._max_jsonl_lines,
+        )
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text("\n".join(tail) + "\n" if tail else "", encoding="utf-8")
+        os.replace(tmp, path)
 
 
 def _read_latest_valid_envelope(path: Path) -> MetricsEnvelope | None:

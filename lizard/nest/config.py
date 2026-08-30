@@ -21,3 +21,4 @@ class NestSettings(BaseSettings):
     data_dir: Path = Field(default=Path("./data"))
     host_stale_seconds: int = 60
     host_offline_seconds: int = 300
+    max_jsonl_lines: int = Field(default=100_000, ge=100, description="Max lines per host JSONL file before rotation")

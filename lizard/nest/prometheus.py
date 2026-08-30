@@ -22,7 +22,9 @@ def render_prometheus_metrics(
                 f"{core_percent}"
             )
         lines.append(f"lizard_memory_percent{labels} {envelope.memory.percent}")
+        lines.append(f"lizard_memory_total_bytes{labels} {envelope.memory.total_bytes}")
         lines.append(f"lizard_memory_used_bytes{labels} {envelope.memory.used_bytes}")
+        lines.append(f"lizard_memory_available_bytes{labels} {envelope.memory.available_bytes}")
         if envelope.uptime_seconds is not None:
             lines.append(f"lizard_agent_uptime_seconds{labels} {envelope.uptime_seconds}")
 
@@ -56,16 +58,31 @@ def render_prometheus_metrics(
             )
             if gpu.utilization_percent is not None:
                 lines.append(f"lizard_gpu_utilization_percent{gpu_labels} {gpu.utilization_percent}")
+            if gpu.utilization_percent is not None:
+                lines.append(f"lizard_gpu_utilization_percent{gpu_labels} {gpu.utilization_percent}")
+            if gpu.memory_total_bytes is not None:
+                lines.append(f"lizard_gpu_memory_total_bytes{gpu_labels} {gpu.memory_total_bytes}")
+            if gpu.memory_used_bytes is not None:
+                lines.append(f"lizard_gpu_memory_used_bytes{gpu_labels} {gpu.memory_used_bytes}")
             if gpu.memory_percent is not None:
                 lines.append(f"lizard_gpu_memory_percent{gpu_labels} {gpu.memory_percent}")
             if gpu.temperature_celsius is not None:
                 lines.append(f"lizard_gpu_temperature_celsius{gpu_labels} {gpu.temperature_celsius}")
+            if gpu.power_watts is not None:
+                lines.append(f"lizard_gpu_power_watts{gpu_labels} {gpu.power_watts}")
         for entry_index, temperature in enumerate(envelope.temperatures):
-            lines.append(
-                "lizard_temperature_celsius"
-                f"{_labels(host_id=envelope.host_id, hostname=envelope.hostname, sensor=temperature.sensor, label=temperature.label, entry=str(entry_index))} "
-                f"{temperature.current_celsius}"
+            temp_labels = _labels(
+                host_id=envelope.host_id,
+                hostname=envelope.hostname,
+                sensor=temperature.sensor,
+                label=temperature.label,
+                entry=str(entry_index),
             )
+            lines.append(f"lizard_temperature_celsius{temp_labels} {temperature.current_celsius}")
+            if temperature.high_celsius is not None:
+                lines.append(f"lizard_temperature_high_celsius{temp_labels} {temperature.high_celsius}")
+            if temperature.critical_celsius is not None:
+                lines.append(f"lizard_temperature_critical_celsius{temp_labels} {temperature.critical_celsius}")
 
     lines.extend(
         [

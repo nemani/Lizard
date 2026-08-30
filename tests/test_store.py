@@ -135,3 +135,39 @@ def test_store_host_path_stays_inside_data_dir(tmp_path) -> None:
 
     with pytest.raises(ValueError):
         store._host_path("../config/authorized_keys", ".jsonl")
+
+
+def test_store_rotates_jsonl_when_exceeding_max_lines(tmp_path) -> None:
+    store = MetricsStore(tmp_path, max_jsonl_lines=5)
+    for i in range(10):
+        store.put(_envelope("gpu-01", float(i)))
+
+    path = tmp_path / "gpu-01.jsonl"
+    lines = path.read_text(encoding="utf-8").strip().split("\n")
+    assert len(lines) == 5
+    # Should keep the most recent entries (indices 5-9)
+    values = [
+        MetricsEnvelope.model_validate_json(line).cpu.overall_percent
+        for line in lines
+    ]
+    assert values == [5.0, 6.0, 7.0, 8.0, 9.0]
+
+
+def test_store_no_rotation_when_below_max(tmp_path) -> None:
+    store = MetricsStore(tmp_path, max_jsonl_lines=100)
+    for i in range(5):
+        store.put(_envelope("gpu-01", float(i)))
+
+    path = tmp_path / "gpu-01.jsonl"
+    lines = path.read_text(encoding="utf-8").strip().split("\n")
+    assert len(lines) == 5
+
+
+def test_store_rotation_disabled_with_zero(tmp_path) -> None:
+    store = MetricsStore(tmp_path, max_jsonl_lines=0)
+    for i in range(10):
+        store.put(_envelope("gpu-01", float(i)))
+
+    path = tmp_path / "gpu-01.jsonl"
+    lines = path.read_text(encoding="utf-8").strip().split("\n")
+    assert len(lines) == 10
