@@ -25,7 +25,7 @@
 docker compose up --build mqtt nest prometheus grafana
 ```
 
-The Nest UI and API listen on `http://localhost:8000`. Prometheus listens on `http://localhost:9090`, and Grafana listens on `http://localhost:3000` with `admin` / `lizard` for local demo use.
+The Nest UI and API listen on `http://localhost:8000`. Prometheus listens on `http://localhost:9090`, and Grafana listens on `http://localhost:9001` with `admin` / `lizard` for local demo use.
 
 ```bash
 open http://localhost:8000
