@@ -47,7 +47,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: lizard
       GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
-      - "3000:3000"
+      - "9001:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
